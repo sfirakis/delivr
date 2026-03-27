@@ -38,7 +38,7 @@
 @layer components {
 
   .app-shell {
-    @apply relative mx-auto bg-surface-1 overflow-hidden flex flex-col;
+    @apply relative mx-auto bg-surface-1 overflow-hidden flex flex-col w-full;
     max-width: 430px;
     height: 100dvh;
     box-shadow: 0 0 80px rgba(0,0,0,0.6);
