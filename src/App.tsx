@@ -26,7 +26,7 @@ export default function App() {
   const { initialize } = useAuthStore()
   useEffect(() => { initialize() }, [initialize])
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
+    <div className="min-h-screen bg-surface-2 flex items-center justify-center">
       <AppShell>
         <Routes>
           <Route path="/"          element={<SplashPage />} />
