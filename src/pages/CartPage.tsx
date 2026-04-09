@@ -1,9 +1,11 @@
 // ═══════════════════════════════════════════════════════════
 // CartPage.tsx
 // ═══════════════════════════════════════════════════════════
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '@/store/cartStore'
+import { useValidatePromo, useAddresses } from '@/hooks/useDelivr'
+import { useAuthStore } from '@/store/authStore'
 import { BackHeader, QtyStepper, Divider, EmptyState } from '@/components/ui'
 import toast from 'react-hot-toast'
 
@@ -12,26 +14,42 @@ export function CartPage() {
   const { items, storeName, storeEmoji, storeDeliveryFee,
           updateQuantity, clearCart, subtotal } = useCartStore()
 
+  const { user } = useAuthStore()
+  const { data: addresses } = useAddresses(user?.id ?? '')
+  const defaultAddr = addresses?.find(a => a.is_default) ?? addresses?.[0]
+
   const [deliveryType, setDeliveryType] = useState<'delivery'|'pickup'>('delivery')
   const [promoCode, setPromoCode]       = useState('')
+  const [promoApplied, setPromoApplied] = useState('')
   const [discount, setDiscount]         = useState(0)
   const [promoMsg, setPromoMsg]         = useState<{ok:boolean; text:string}|null>(null)
 
   const fee       = deliveryType === 'delivery' ? storeDeliveryFee : 0
   const sub       = subtotal()
-  const discAmt   = sub * discount
+  const discAmt   = discount
   const total     = sub + fee - discAmt
+
+  const { data: promoResult, error: promoError, isLoading: promoLoading } = useValidatePromo(promoApplied, sub)
 
   const applyPromo = () => {
     const code = promoCode.trim().toUpperCase()
-    if (code === 'WELCOME20') {
-      setDiscount(0.20); setPromoMsg({ ok:true, text:'✓ -20% εφαρμόστηκε!' })
-    } else if (code === 'DELIVR10') {
-      setDiscount(0.10); setPromoMsg({ ok:true, text:'✓ -10% εφαρμόστηκε!' })
-    } else {
-      setDiscount(0); setPromoMsg({ ok:false, text:'✗ Μη έγκυρος κωδικός' })
+    if (code.length < 3) {
+      setPromoMsg({ ok: false, text: '✗ Εισάγετε κωδικό έκπτωσης' })
+      return
     }
+    setPromoApplied(code)
   }
+
+  useEffect(() => {
+    if (promoResult) {
+      setDiscount(promoResult.discount)
+      setPromoMsg({ ok: true, text: `✓ -${promoResult.discount.toFixed(2)}€ εφαρμόστηκε!` })
+    }
+    if (promoError) {
+      setDiscount(0)
+      setPromoMsg({ ok: false, text: `✗ ${(promoError as Error).message}` })
+    }
+  }, [promoResult, promoError])
 
   if (items.length === 0) return (
     <div className="screen">
@@ -68,8 +86,17 @@ export function CartPage() {
                  onClick={() => navigate('/profile')}>
               <span className="text-xl">📍</span>
               <div className="flex-1">
-                <p className="font-semibold text-sm">Ερμού 45, Σύνταγμα</p>
-                <p className="text-xs text-ink-2">Όροφος 2 · Κουδούνι Παπαδόπουλος</p>
+                {defaultAddr ? (
+                  <>
+                    <p className="font-semibold text-sm">{defaultAddr.label}</p>
+                    <p className="text-xs text-ink-2">{defaultAddr.street}, {defaultAddr.city}{defaultAddr.floor ? ` · Όροφος ${defaultAddr.floor}` : ''}</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-semibold text-sm">Προσθήκη διεύθυνσης</p>
+                    <p className="text-xs text-ink-2">Επίλεξε διεύθυνση παράδοσης</p>
+                  </>
+                )}
               </div>
               <span className="text-brand text-sm font-semibold">Αλλαγή</span>
             </div>
@@ -103,7 +130,9 @@ export function CartPage() {
               <input className="input-field" placeholder="Κωδικός έκπτωσης"
                 value={promoCode} onChange={e => setPromoCode(e.target.value)} />
             </div>
-            <button className="btn btn-primary btn-md px-4" onClick={applyPromo}>Εφαρμογή</button>
+            <button className="btn btn-primary btn-md px-4" onClick={applyPromo} disabled={promoLoading}>
+              {promoLoading ? '...' : 'Εφαρμογή'}
+            </button>
           </div>
           {promoMsg && (
             <p className={`text-xs mt-1.5 font-medium ${promoMsg.ok ? 'text-success' : 'text-danger'}`}>
@@ -119,7 +148,7 @@ export function CartPage() {
           {[
             { label:'Υποσύνολο', val:`${sub.toFixed(2)}€` },
             { label:'Delivery', val: fee===0 ? '✓ Δωρεάν' : `${fee.toFixed(2)}€`, green: fee===0 },
-            ...(discount>0 ? [{ label:`Έκπτωση (${discount*100}%)`, val:`-${discAmt.toFixed(2)}€`, green:true }] : []),
+            ...(discount>0 ? [{ label:'Έκπτωση', val:`-${discAmt.toFixed(2)}€`, green:true }] : []),
           ].map(r => (
             <div key={r.label} className="flex justify-between text-sm">
               <span className="text-ink-2">{r.label}</span>

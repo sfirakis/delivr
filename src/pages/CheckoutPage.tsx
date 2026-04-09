@@ -1,12 +1,13 @@
 // Full CheckoutPage with Stripe + Edge Functions
 // See src/hooks/useStripe.ts for payment logic
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '@/store/cartStore'
 import { useAuthStore } from '@/store/authStore'
-import { useCreateOrder } from '@/hooks/useDelivr'
+import { useCreateOrder, useAddresses } from '@/hooks/useDelivr'
 import { useStripePayment } from '@/hooks/useStripe'
 import { Spinner, Divider } from '@/components/ui'
+import { Address } from '@/types'
 import toast from 'react-hot-toast'
 
 type PayMethod = 'card_saved' | 'card_new' | 'cash' | 'apple_pay' | 'google_pay'
@@ -29,6 +30,14 @@ export default function CheckoutPage() {
   const [loading, setLoading]     = useState(false)
   const [step, setStep]           = useState<'review'|'processing'|'success'>('review')
   const [orderId, setOrderId]     = useState<string|null>(null)
+  const { data: addresses } = useAddresses(user?.id ?? '')
+  const [selectedAddress, setSelectedAddress] = useState<Address | null>(null)
+
+  useEffect(() => {
+    if (addresses?.length && !selectedAddress) {
+      setSelectedAddress(addresses.find(a => a.is_default) ?? addresses[0])
+    }
+  }, [addresses, selectedAddress])
 
   const subtotal = cart.subtotal()
   const deliveryFee = cart.storeDeliveryFee
@@ -48,7 +57,7 @@ export default function CheckoutPage() {
         userId: user.id,
         payload: {
           store_id: cart.storeId!, delivery_type: 'delivery',
-          delivery_address: { street: 'Ερμού 45', city: 'Αθήνα' },
+          delivery_address: selectedAddress ? { street: selectedAddress.street, city: selectedAddress.city, postal_code: selectedAddress.postal_code, floor: selectedAddress.floor } : undefined,
           items: orderItems, subtotal, delivery_fee: deliveryFee,
           discount_amount: 0, total, payment_method: payMethod === 'cash' ? 'cash' : 'card',
         }
@@ -109,6 +118,31 @@ export default function CheckoutPage() {
               <span className="font-medium">{ci.lineTotal.toFixed(2)}€</span>
             </div>
           ))}
+        </div>
+        <Divider className="mx-5" />
+        <div className="px-5 py-4">
+          <p className="text-xs font-bold text-ink-3 uppercase tracking-wider mb-3">ΔΙΕΥΘΥΝΣΗ ΠΑΡΑΔΟΣΗΣ</p>
+          {addresses?.length ? (
+            <div className="space-y-2">
+              {addresses.map(addr => (
+                <button key={addr.id} onClick={() => setSelectedAddress(addr)}
+                  className={`w-full flex items-center gap-3 p-3.5 rounded-2xl border-2 transition-all text-left
+                    ${selectedAddress?.id === addr.id ? 'border-brand bg-brand-50' : 'border-surface-4 bg-surface-1'}`}>
+                  <span className="text-2xl flex-shrink-0">📍</span>
+                  <div className="flex-1">
+                    <p className={`text-sm font-semibold ${selectedAddress?.id === addr.id ? 'text-brand' : ''}`}>{addr.label}</p>
+                    <p className="text-xs text-ink-2">{addr.street}, {addr.city}{addr.floor ? ` · Όροφος ${addr.floor}` : ''}</p>
+                  </div>
+                  <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0
+                    ${selectedAddress?.id === addr.id ? 'border-brand bg-brand' : 'border-surface-4'}`}>
+                    {selectedAddress?.id === addr.id && <div className="w-2 h-2 rounded-full bg-white" />}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-ink-2">Δεν έχεις αποθηκευμένες διευθύνσεις</p>
+          )}
         </div>
         <Divider className="mx-5" />
         <div className="px-5 py-4">

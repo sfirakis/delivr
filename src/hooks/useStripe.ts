@@ -5,6 +5,7 @@
 //   await pay({ amount: 12.50, storeId, orderItems })
 
 import { useState, useCallback } from 'react'
+import { loadStripe } from '@stripe/stripe-js'
 import { supabase } from '@/lib/supabase'
 
 interface PaymentOptions {
@@ -12,6 +13,7 @@ interface PaymentOptions {
   storeId: string
   orderId: string
   orderItems: Array<{ name: string; price: number; quantity: number }>
+  cardElement?: any  // Stripe CardElement reference for new card payments
 }
 
 interface PaymentResult {
@@ -99,19 +101,17 @@ export function useStripePayment() {
       const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
       if (!stripeKey) throw new Error('Missing VITE_STRIPE_PUBLISHABLE_KEY')
 
-      // Dynamically import stripe-js to avoid SSR issues
-      const { loadStripe } = await import('@stripe/stripe-js')
       const stripe = await loadStripe(stripeKey)
       if (!stripe) throw new Error('Stripe failed to load')
 
-      // 3. Confirm payment with saved card (off-session)
-      //    For new cards, use stripe.confirmCardPayment with Elements UI
-      const result = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: { token: 'tok_visa' }, // Replace with actual Elements card in production
-          billing_details: {},
-        },
-      })
+      // 3. Confirm payment
+      //    - New card: use cardElement from Stripe Elements
+      //    - Saved card / Apple Pay / Google Pay: payment method already attached server-side
+      const result = opts.cardElement
+        ? await stripe.confirmCardPayment(clientSecret, {
+            payment_method: { card: opts.cardElement },
+          })
+        : await stripe.confirmCardPayment(clientSecret)
 
       if (result.error) {
         throw new Error(result.error.message ?? 'Payment failed')
@@ -141,45 +141,13 @@ export function useStripePayment() {
   return { pay, loading, error }
 }
 
-// ─── Stripe Elements component for card input ─────────────────
-// Install: npm install @stripe/react-stripe-js @stripe/stripe-js
-// Usage: Wrap your payment form with <StripeProvider> and use <CardElement>
-//
-// Example:
-//
-// import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js'
-// import { loadStripe } from '@stripe/stripe-js'
-//
-// const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
-//
-// function CardPaymentForm({ clientSecret, onSuccess }) {
-//   const stripe   = useStripe()
-//   const elements = useElements()
-//
-//   const handlePay = async () => {
-//     const cardElement = elements!.getElement(CardElement)!
-//     const result = await stripe!.confirmCardPayment(clientSecret, {
-//       payment_method: { card: cardElement }
-//     })
-//     if (result.error) {
-//       // Show error
-//     } else if (result.paymentIntent.status === 'succeeded') {
-//       onSuccess(result.paymentIntent.id)
-//     }
-//   }
-//
-//   return (
-//     <div>
-//       <CardElement options={{ style: { base: { fontSize: '16px' } } }} />
-//       <button onClick={handlePay}>Πληρωμή</button>
-//     </div>
-//   )
-// }
-//
-// function CheckoutPage() {
-//   return (
-//     <Elements stripe={stripePromise} options={{ clientSecret }}>
-//       <CardPaymentForm clientSecret={clientSecret} onSuccess={handleSuccess} />
-//     </Elements>
-//   )
-// }
+// ─── Stripe Elements card input for new card payments ────────
+let stripePromise: ReturnType<typeof loadStripe> | null = null
+function getStripe() {
+  if (!stripePromise) {
+    stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
+  }
+  return stripePromise
+}
+
+export { getStripe }
