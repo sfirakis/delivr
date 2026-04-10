@@ -1,22 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useMerchantStore } from '@/merchant/merchantStore'
+import { useAuthStore } from '@/store/authStore'
+import { supabase } from '@/lib/supabase'
+import type { Store } from '@/types'
 import POSPage        from '@/merchant/pages/POSPage'
 import MerchantMenuPage     from '@/merchant/pages/MenuPage'
 import MerchantAnalyticsPage from '@/merchant/pages/AnalyticsPage'
 import MerchantSettingsPage  from '@/merchant/pages/SettingsPage'
-
-// Demo store ID — in production this comes from auth/session
-const DEMO_STORE_ID = 'demo-store-id'
-const DEMO_STORE = {
-  id: DEMO_STORE_ID, name: 'Avra Souvlaki', slug:'avra',
-  category: 'restaurant' as any, cuisine_tags: ['Ελληνική'],
-  address: 'Ερμού 45', city: 'Αθήνα', lat: 37.97, lng: 23.73,
-  delivery_fee: 1.50, min_order_amount: 5, avg_delivery_time: 25,
-  delivery_radius_km: 5, is_open: true, is_active: true, is_promoted: false,
-  rating: 4.8, review_count: 342, free_delivery_above: null, discount_pct: null,
-  logo_url: null, cover_url: null, phone: null, email: null,
-  description: null, created_at: '', updated_at: '', emoji: '🥙',
-}
 
 type TabId = 'pos' | 'menu' | 'analytics' | 'settings'
 
@@ -29,11 +19,65 @@ const NAV_TABS: { id: TabId; icon: string; label: string }[] = [
 
 export default function MerchantApp() {
   const [tab, setTab] = useState<TabId>('pos')
+  const { user } = useAuthStore()
   const { setStore, pendingOrders, isOnline } = useMerchantStore()
+  const [loading, setLoading] = useState(true)
+  const [store, setLocalStore] = useState<Store | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    setStore(DEMO_STORE as any)
-  }, [setStore])
+    async function fetchMerchantStore() {
+      if (!user) { setLoading(false); return }
+      try {
+        // Try to find store owned by this user (check email match or a store_users table)
+        const { data, error: err } = await supabase
+          .from('stores')
+          .select('*')
+          .eq('email', user.email)
+          .single()
+
+        if (err || !data) {
+          // Fallback: try matching by user metadata or first active store
+          const { data: fallback } = await supabase
+            .from('stores')
+            .select('*')
+            .eq('is_active', true)
+            .limit(1)
+            .single()
+
+          if (fallback) {
+            setLocalStore(fallback as Store)
+            setStore(fallback as Store)
+          } else {
+            setError('Δεν βρέθηκε κατάστημα για αυτόν τον λογαριασμό')
+          }
+        } else {
+          setLocalStore(data as Store)
+          setStore(data as Store)
+        }
+      } catch {
+        setError('Σφάλμα φόρτωσης καταστήματος')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchMerchantStore()
+  }, [user, setStore])
+
+  if (loading) return (
+    <div className="flex flex-col h-full bg-surface-2 items-center justify-center gap-3">
+      <div className="text-4xl animate-pulse">🏪</div>
+      <p className="font-display font-semibold text-ink-2">Φόρτωση καταστήματος...</p>
+    </div>
+  )
+
+  if (error || !store) return (
+    <div className="flex flex-col h-full bg-surface-2 items-center justify-center gap-3 px-8 text-center">
+      <div className="text-4xl">⚠️</div>
+      <p className="font-display font-semibold text-ink-1">{error ?? 'Δεν βρέθηκε κατάστημα'}</p>
+      <p className="text-sm text-ink-2">Βεβαιωθείτε ότι ο λογαριασμός σας είναι συνδεδεμένος με κατάστημα.</p>
+    </div>
+  )
 
   return (
     <div className="flex flex-col h-full bg-surface-2">
@@ -42,10 +86,10 @@ export default function MerchantApp() {
 
       {/* Content */}
       <div className="flex-1 overflow-hidden bg-surface-1">
-        {tab === 'pos'       && <POSPage storeId={DEMO_STORE_ID} />}
-        {tab === 'menu'      && <MerchantMenuPage storeId={DEMO_STORE_ID} />}
-        {tab === 'analytics' && <MerchantAnalyticsPage storeId={DEMO_STORE_ID} />}
-        {tab === 'settings'  && <MerchantSettingsPage store={DEMO_STORE as any} />}
+        {tab === 'pos'       && <POSPage storeId={store.id} />}
+        {tab === 'menu'      && <MerchantMenuPage storeId={store.id} />}
+        {tab === 'analytics' && <MerchantAnalyticsPage storeId={store.id} />}
+        {tab === 'settings'  && <MerchantSettingsPage store={store} />}
       </div>
 
       {/* Bottom nav */}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
 import { Toggle, Divider, OrderStatusBadge } from '@/components/ui'
 import toast from 'react-hot-toast'
 
@@ -16,21 +17,6 @@ interface DriverOrder {
   earn: number
   status: 'assigned' | 'picked_up' | 'on_the_way' | 'delivered'
   created_at: string
-}
-
-// Mock for demo
-const MOCK_ASSIGNMENT: DriverOrder = {
-  id: 'ORD-9912',
-  store_name: 'Avra Souvlaki',
-  store_address: 'Ερμού 45',
-  customer_name: 'Αντώνης Π.',
-  delivery_address: 'Βασ. Σοφίας 10, Αθήνα',
-  total: 9.50,
-  items_count: 3,
-  distance_km: 2.3,
-  earn: 3.20,
-  status: 'assigned',
-  created_at: new Date().toISOString(),
 }
 
 // ─── Incoming order alert ─────────────────────────────────────
@@ -170,35 +156,139 @@ function ActiveDeliveryCard({ order, onAdvance }: {
 type DriverTab = 'home' | 'history' | 'earnings' | 'profile'
 
 export default function DriverApp() {
+  const { user } = useAuthStore()
   const [isOnline, setIsOnline] = useState(false)
   const [tab, setTab]           = useState<DriverTab>('home')
   const [assignment, setAssignment] = useState<DriverOrder | null>(null)
   const [activeOrder, setActiveOrder] = useState<DriverOrder | null>(null)
-  const [todayEarnings] = useState(42.80)
-  const [completedToday] = useState(11)
+  const [todayEarnings, setTodayEarnings] = useState(0)
+  const [completedToday, setCompletedToday] = useState(0)
+  const [history, setHistory] = useState<DriverOrder[]>([])
 
-  // Demo: show assignment after going online
+  // Listen for new assignments via Supabase Realtime
   useEffect(() => {
-    if (!isOnline || activeOrder) return
-    const t = setTimeout(() => setAssignment(MOCK_ASSIGNMENT), 3000)
-    return () => clearTimeout(t)
-  }, [isOnline, activeOrder])
+    if (!isOnline || !user) return
 
-  const handleAccept = () => {
-    setActiveOrder({ ...MOCK_ASSIGNMENT })
+    const channel = supabase
+      .channel(`driver:${user.id}`)
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: 'orders',
+        filter: `driver_id=eq.${user.id}`,
+      }, (payload) => {
+        const order = payload.new as any
+        if (order.status === 'assigned' && !activeOrder) {
+          // Fetch full order details
+          supabase
+            .from('orders')
+            .select('*, store:stores(name, address)')
+            .eq('id', order.id)
+            .single()
+            .then(({ data }) => {
+              if (data) {
+                setAssignment({
+                  id: data.id,
+                  store_name: data.store?.name ?? 'Κατάστημα',
+                  store_address: data.store?.address ?? '',
+                  customer_name: 'Πελάτης',
+                  delivery_address: typeof data.delivery_address === 'object' && data.delivery_address
+                    ? `${(data.delivery_address as any).street ?? ''}, ${(data.delivery_address as any).city ?? ''}`
+                    : 'Διεύθυνση παράδοσης',
+                  total: data.total,
+                  items_count: data.order_items?.length ?? 0,
+                  distance_km: 0,
+                  earn: data.delivery_fee ?? 3.00,
+                  status: 'assigned',
+                  created_at: data.created_at,
+                })
+              }
+            })
+        }
+      })
+      .subscribe()
+
+    return () => { supabase.removeChannel(channel) }
+  }, [isOnline, user, activeOrder])
+
+  // Fetch today's stats
+  useEffect(() => {
+    if (!user) return
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    supabase
+      .from('orders')
+      .select('id, delivery_fee, total')
+      .eq('driver_id', user.id)
+      .eq('status', 'delivered')
+      .gte('created_at', today.toISOString())
+      .then(({ data }) => {
+        if (data) {
+          setCompletedToday(data.length)
+          setTodayEarnings(data.reduce((sum, o) => sum + (o.delivery_fee ?? 0), 0))
+        }
+      })
+  }, [user])
+
+  // Fetch history when tab changes
+  useEffect(() => {
+    if (tab !== 'history' || !user) return
+    supabase
+      .from('orders')
+      .select('*, store:stores(name)')
+      .eq('driver_id', user.id)
+      .eq('status', 'delivered')
+      .order('delivered_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        if (data) {
+          setHistory(data.map((o: any) => ({
+            id: o.id,
+            store_name: o.store?.name ?? 'Κατάστημα',
+            store_address: '',
+            customer_name: '',
+            delivery_address: '',
+            total: o.total,
+            items_count: 0,
+            distance_km: 0,
+            earn: o.delivery_fee ?? 0,
+            status: 'delivered' as const,
+            created_at: o.created_at,
+          })))
+        }
+      })
+  }, [tab, user])
+
+  const handleAccept = async () => {
+    if (!assignment) return
+    await supabase.from('orders').update({ status: 'picked_up' }).eq('id', assignment.id)
+    setActiveOrder({ ...assignment })
     setAssignment(null)
     toast.success('✓ Ανάθεση αποδεκτή! Πήγαινε στο κατάστημα.')
   }
 
-  const handleReject = () => {
+  const handleReject = async () => {
+    if (assignment) {
+      await supabase.from('orders').update({ driver_id: null, status: 'ready' }).eq('id', assignment.id)
+    }
     setAssignment(null)
     toast('Ανάθεση απορρίφθηκε', { icon: '—' })
   }
 
-  const handleAdvance = (status: string) => {
+  const handleAdvance = async (status: string) => {
+    if (!activeOrder) return
+    const updates: Record<string, any> = { status }
+    if (status === 'picked_up') updates.picked_up_at = new Date().toISOString()
+    if (status === 'on_the_way') updates.picked_up_at = new Date().toISOString()
+    if (status === 'delivered') updates.delivered_at = new Date().toISOString()
+
+    await supabase.from('orders').update(updates).eq('id', activeOrder.id)
+
     if (status === 'delivered') {
-      toast.success('🎉 Παράδοση ολοκληρώθηκε! +3.20€')
+      toast.success(`🎉 Παράδοση ολοκληρώθηκε! +${activeOrder.earn.toFixed(2)}€`)
       setActiveOrder(null)
+      // Refresh stats
+      setCompletedToday(c => c + 1)
+      setTodayEarnings(e => e + activeOrder.earn)
     } else {
       setActiveOrder(o => o ? { ...o, status: status as any } : null)
     }
@@ -330,19 +420,22 @@ export default function DriverApp() {
           <div className="overflow-y-auto h-full px-5 pb-24">
             <h2 className="font-display font-black text-2xl pt-6 mb-4">Ιστορικό</h2>
             <div className="space-y-2">
-              {Array.from({length:8},(_,i) => (
-                <div key={i} className="bg-surface-2 rounded-xl p-4 flex items-center gap-3">
+              {history.map((order) => (
+                <div key={order.id} className="bg-surface-2 rounded-xl p-4 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-brand-50 flex items-center justify-center text-lg flex-shrink-0">📦</div>
                   <div className="flex-1">
-                    <p className="font-semibold text-sm">Παράδοση #{8-i+900}</p>
-                    <p className="text-xs text-ink-2">{['Avra Souvlaki','Brew & Co','Burger House','Tokyo Sushi'][i%4]} · {(1.8+i*0.3).toFixed(1)} km</p>
+                    <p className="font-semibold text-sm">#{order.id.slice(0, 8)}</p>
+                    <p className="text-xs text-ink-2">{order.store_name}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-display font-bold text-sm text-brand">+€{(2.8+i*0.4).toFixed(2)}</p>
-                    <p className="text-[11px] text-ink-3">{12-i}:{String(Math.floor(Math.random()*60)).padStart(2,'0')}</p>
+                    <p className="font-display font-bold text-sm text-brand">+€{order.earn.toFixed(2)}</p>
+                    <p className="text-[11px] text-ink-3">{new Date(order.created_at).toLocaleTimeString('el-GR', { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               ))}
+              {history.length === 0 && (
+                <p className="text-center text-ink-3 text-sm py-8">Δεν υπάρχει ιστορικό</p>
+              )}
             </div>
           </div>
         )}
