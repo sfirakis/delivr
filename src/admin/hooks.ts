@@ -415,3 +415,173 @@ export function useStoreUsers(storeId: string | null) {
     enabled: !!storeId,
   })
 }
+
+// ============================================================
+// Subscriptions
+// ============================================================
+
+export interface SubscriptionPlan {
+  id: string
+  name: string
+  description: string | null
+  audience: 'store' | 'property'
+  price: number
+  billing_cycle: 'month' | 'year'
+  trial_days: number
+  commission_mode: 'none' | 'flat' | 'commission' | null
+  commission_value: number | null
+  included_orders: number | null
+  features: string[]
+  is_active: boolean
+  sort_order: number
+}
+
+export interface Subscription {
+  id: string
+  plan_id: string
+  party_type: 'store' | 'property'
+  party_id: string
+  status: 'trial' | 'active' | 'past_due' | 'paused' | 'cancelled'
+  price: number
+  billing_cycle: 'month' | 'year'
+  started_on: string
+  trial_ends_on: string | null
+  next_charge_on: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  notes: string | null
+  subscription_plans?: { name: string; audience: string } | null
+}
+
+export function usePlans() {
+  return useQuery({
+    queryKey: ['subscription-plans'],
+    queryFn: async () => throwIf(await supabase.from('subscription_plans')
+      .select('*').order('audience').order('sort_order')) as SubscriptionPlan[],
+  })
+}
+
+export function useUpsertPlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (plan: Partial<SubscriptionPlan>) => {
+      if (plan.id) {
+        return throwIf(await supabase.from('subscription_plans')
+          .update({ ...plan, updated_at: new Date().toISOString() })
+          .eq('id', plan.id).select().single())
+      }
+      return throwIf(await supabase.from('subscription_plans').insert(plan).select().single())
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['subscription-plans'] }) },
+  })
+}
+
+export function useDeletePlan() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('subscription_plans').delete().eq('id', id)
+      if (error) throw new Error(error.message)
+    },
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['subscription-plans'] }) },
+  })
+}
+
+export function useSubscriptions() {
+  return useQuery({
+    queryKey: ['subscriptions'],
+    queryFn: async () => throwIf(await supabase.from('subscriptions')
+      .select('*, subscription_plans(name, audience)')
+      .order('created_at', { ascending: false })) as Subscription[],
+  })
+}
+
+export function useUpsertSubscription() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (sub: Partial<Subscription>) => {
+      if (sub.id) {
+        return throwIf(await supabase.from('subscriptions')
+          .update({ ...sub, updated_at: new Date().toISOString() })
+          .eq('id', sub.id).select().single())
+      }
+      return throwIf(await supabase.from('subscriptions').insert(sub).select().single())
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['subscriptions'] })
+      void qc.invalidateQueries({ queryKey: ['platform-stats'] })
+    },
+  })
+}
+
+export function useBillSubscriptions() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (period: string) =>
+      throwIf(await supabase.rpc('delivr_bill_subscriptions', { p_period: period })) as
+        { ok: boolean; created: number; total: number; period_start: string; period_end: string },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['admin-charges'] })
+      void qc.invalidateQueries({ queryKey: ['subscriptions'] })
+      void qc.invalidateQueries({ queryKey: ['platform-stats'] })
+    },
+  })
+}
+
+// ============================================================
+// Statistics
+// ============================================================
+
+export interface PlatformStats {
+  from: string
+  to: string
+  totals: {
+    orders: number; live_orders: number; gmv: number; aov: number
+    delivered: number; cancelled: number; rejection_rate: number
+    qr_orders: number; delivery_orders: number; pickup_orders: number; scans: number
+  }
+  income: { commission: number; subscriptions: number; adjustments: number; total: number }
+  payouts: number
+  net: number
+  pending: number
+  paid: number
+  series: { day: string; orders: number; gmv: number; commission: number }[]
+  by_store: { id: string; name: string; orders: number; gmv: number; aov: number; commission: number; cancelled: number }[]
+  by_property: { id: string; name: string; code: string; area: string | null; orders: number; gmv: number; payout: number; scans: number }[]
+  top_items: { name: string; qty: number; revenue: number }[]
+  hours: { hour: number; orders: number }[]
+  subscriptions: { active: number; mrr: number; past_due: number; trials: number }
+}
+
+export interface StoreStats {
+  from: string
+  to: string
+  totals: {
+    orders: number; turnover: number; aov: number; items_sold: number
+    delivered: number; cancelled: number; rejection_rate: number; avg_prep: number
+    delivery: number; pickup: number; delivery_fees: number
+  }
+  fees: { commission: number; subscription: number; total: number; pending: number; net: number }
+  series: { day: string; orders: number; turnover: number }[]
+  top_items: { name: string; qty: number; revenue: number }[]
+  hours: { hour: number; orders: number }[]
+  properties: { name: string; code: string; area: string | null; orders: number; turnover: number }[]
+  repeat_customers: number
+}
+
+export function usePlatformStats(from: string, to: string) {
+  return useQuery({
+    queryKey: ['platform-stats', from, to],
+    queryFn: async () => throwIf(await supabase.rpc('delivr_platform_stats',
+      { p_from: from, p_to: to })) as PlatformStats,
+  })
+}
+
+export function useStoreStats(storeId: string, from: string, to: string) {
+  return useQuery({
+    queryKey: ['store-stats', storeId, from, to],
+    queryFn: async () => throwIf(await supabase.rpc('delivr_store_stats',
+      { p_store_id: storeId, p_from: from, p_to: to })) as StoreStats,
+    enabled: !!storeId,
+  })
+}

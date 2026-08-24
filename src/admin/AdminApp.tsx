@@ -11,8 +11,11 @@ import PropertiesPage from './pages/PropertiesPage'
 import BillingPage from './pages/BillingPage'
 import PeoplePage from './pages/PeoplePage'
 import SettingsPage from './pages/SettingsPage'
+import AnalyticsPage from './pages/AnalyticsPage'
+import SubscriptionsPage from './pages/SubscriptionsPage'
+import HelpPage from '@/help/HelpPage'
 
-type Tab = 'overview' | 'orders' | 'stores' | 'properties' | 'billing' | 'people' | 'settings'
+type Tab = 'overview' | 'analytics' | 'orders' | 'stores' | 'properties' | 'billing' | 'subscriptions' | 'people' | 'settings' | 'help'
 
 export default function AdminApp() {
   const [tab, setTab] = useState<Tab>('overview')
@@ -43,13 +46,16 @@ export default function AdminApp() {
   }
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
-    { id: 'overview',   label: '📊 Επισκόπηση' },
-    { id: 'orders',     label: '📦 Παραγγελίες', badge: pendingCount },
-    { id: 'stores',     label: '🏪 Καταστήματα' },
-    { id: 'properties', label: '🔑 Καταλύματα & QR' },
-    { id: 'billing',    label: '🏦 Χρεώσεις' },
-    { id: 'people',     label: '👥 Χρήστες' },
-    { id: 'settings',   label: '⚙️ Ρυθμίσεις' },
+    { id: 'overview',      label: '📊 Επισκόπηση' },
+    { id: 'analytics',     label: '📈 Στατιστικά' },
+    { id: 'orders',        label: '📦 Παραγγελίες', badge: pendingCount },
+    { id: 'stores',        label: '🏪 Καταστήματα' },
+    { id: 'properties',    label: '🔑 Καταλύματα & QR' },
+    { id: 'billing',       label: '🏦 Χρεώσεις' },
+    { id: 'subscriptions', label: '🔁 Συνδρομές' },
+    { id: 'people',        label: '👥 Χρήστες' },
+    { id: 'settings',      label: '⚙️ Ρυθμίσεις' },
+    { id: 'help',          label: '📖 Οδηγός' },
   ]
 
   return (
@@ -73,13 +79,16 @@ export default function AdminApp() {
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
 
       <div className="py-5">
-        {tab === 'overview'   && <OverviewPage />}
-        {tab === 'orders'     && <OrdersPage />}
-        {tab === 'stores'     && <StoresPage />}
-        {tab === 'properties' && <PropertiesPage />}
-        {tab === 'billing'    && <BillingPage />}
-        {tab === 'people'     && <PeoplePage />}
-        {tab === 'settings'   && <SettingsPage />}
+        {tab === 'overview'      && <OverviewPage />}
+        {tab === 'analytics'     && <AnalyticsPage />}
+        {tab === 'orders'        && <OrdersPage />}
+        {tab === 'stores'        && <StoresPage />}
+        {tab === 'properties'    && <PropertiesPage />}
+        {tab === 'billing'       && <BillingPage />}
+        {tab === 'subscriptions' && <SubscriptionsPage />}
+        {tab === 'people'        && <PeoplePage />}
+        {tab === 'settings'      && <SettingsPage />}
+        {tab === 'help'          && <HelpPage audience="admin" />}
       </div>
     </div>
   )

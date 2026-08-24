@@ -8,8 +8,9 @@ import POSPage from './pages/POSPage'
 import MerchantMenuPage from './pages/MenuPage'
 import MerchantAnalyticsPage from './pages/AnalyticsPage'
 import MerchantSettingsPage from './pages/SettingsPage'
+import HelpPage from '@/help/HelpPage'
 
-type TabId = 'pos' | 'menu' | 'analytics' | 'settings'
+type TabId = 'pos' | 'menu' | 'analytics' | 'settings' | 'help'
 
 export default function MerchantApp() {
   const [tab, setTab] = useState<TabId>('pos')
@@ -53,6 +54,7 @@ export default function MerchantApp() {
     { id: 'menu', label: '🍽️ Μενού' },
     { id: 'analytics', label: '📊 Στατιστικά' },
     { id: 'settings', label: '⚙️ Ρυθμίσεις' },
+    { id: 'help', label: '📖 Οδηγός' },
   ]
 
   return (
@@ -84,6 +86,7 @@ export default function MerchantApp() {
         {tab === 'menu' && <MerchantMenuPage storeId={store.id} storeName={store.name} />}
         {tab === 'analytics' && <MerchantAnalyticsPage storeId={store.id} />}
         {tab === 'settings' && <MerchantSettingsPage store={store} />}
+        {tab === 'help' && <HelpPage audience="store" />}
       </div>
     </div>
   )

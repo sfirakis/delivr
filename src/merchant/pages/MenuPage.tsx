@@ -4,6 +4,7 @@ import { Skeleton, Toggle } from '@/components/ui'
 import type { MenuItem } from '@/types'
 import toast from 'react-hot-toast'
 import MenuImport from '@/components/menu/MenuImport'
+import ModifierEditor from '@/components/menu/ModifierEditor'
 
 // ─── Item edit sheet ──────────────────────────────────────────
 function ItemEditSheet({ item, storeId, categoryId, onClose }: {
@@ -140,6 +141,7 @@ export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId:
   const [filterCat, setFilterCat]   = useState('all')
   const [search, setSearch]         = useState('')
   const [importOpen, setImportOpen] = useState(false)
+  const [extrasFor, setExtrasFor] = useState<MenuItem | null>(null)
 
   const allItems = menu?.items ?? []
   const filtered = allItems.filter(i => {
@@ -220,6 +222,11 @@ export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId:
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="font-display font-bold text-sm text-brand">{item.price.toFixed(2)}€</span>
                 {!item.is_available && <span className="badge badge-amber text-[10px]">Μη διαθέσιμο</span>}
+                {(item.modifier_groups?.length ?? 0) > 0 && (
+                  <span className="badge badge-gray text-[10px]">
+                    +{item.modifier_groups!.reduce((n, g) => n + (g.modifiers?.length ?? 0), 0)} extras
+                  </span>
+                )}
               </div>
             </div>
             {/* Controls */}
@@ -228,6 +235,8 @@ export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId:
                 checked={item.is_available}
                 onChange={(v) => toggleAvail.mutate({ itemId: item.id, available: v })}
               />
+              <button className="btn-icon w-9 h-9 text-sm" title="Extras & επιλογές"
+                      onClick={() => setExtrasFor(item)}>➕</button>
               <button className="btn-icon w-9 h-9 text-sm" onClick={() => setEditItem(item)}>✏️</button>
               <button className="btn-icon w-9 h-9 text-sm text-danger" onClick={() => handleDelete(item)}>🗑️</button>
             </div>
@@ -246,6 +255,10 @@ export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId:
       )}
       {importOpen && (
         <MenuImport storeId={storeId} storeName={storeName} onClose={() => setImportOpen(false)} />
+      )}
+      {extrasFor && (
+        <ModifierEditor storeId={storeId} itemId={extrasFor.id} itemName={extrasFor.name}
+                        onClose={() => setExtrasFor(null)} />
       )}
     </div>
   )

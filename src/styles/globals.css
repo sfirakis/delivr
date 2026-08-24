@@ -347,6 +347,15 @@
   @page { size: 80mm auto; margin: 3mm; }
 }
 
+/* ─── Print: A4 store handout ──────────────────────────────── */
+@media print {
+  .handout {
+    border: none !important;
+    padding: 0 !important;
+    font-family: Verdana, Arial, sans-serif;
+  }
+}
+
 /* ─── Dashboard shell (full width, unlike the phone frame) ─── */
 .dash-shell {
   @apply min-h-screen w-full bg-surface-2;

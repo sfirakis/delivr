@@ -9,6 +9,14 @@ export function money(value: number | string | null | undefined, lang: Lang = 'e
   }).format(Number.isFinite(n) ? n : 0)
 }
 
+/** Percentages follow the same locale as money, so 10.0% reads as 10,0% in Greek. */
+export function pct(value: number | string | null | undefined, digits = 1, lang: Lang = 'el') {
+  const n = typeof value === 'string' ? parseFloat(value) : (value ?? 0)
+  return new Intl.NumberFormat(lang === 'el' ? 'el-GR' : 'en-GB', {
+    minimumFractionDigits: digits, maximumFractionDigits: digits,
+  }).format(Number.isFinite(n) ? n : 0) + '%'
+}
+
 export function num(value: number | string | null | undefined): number {
   const n = typeof value === 'string' ? parseFloat(value) : (value ?? 0)
   return Number.isFinite(n) ? n : 0
