@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
-import type { Order, Store, MenuItem, MenuCategory } from '@/types'
+import type { Order, Store } from '@/types'
 
 interface MerchantState {
   store: Store | null

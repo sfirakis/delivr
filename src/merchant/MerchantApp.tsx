@@ -1,71 +1,90 @@
-import { useState, useEffect } from 'react'
-import { useMerchantStore } from '@/merchant/merchantStore'
-import POSPage        from '@/merchant/pages/POSPage'
-import MerchantMenuPage     from '@/merchant/pages/MenuPage'
-import MerchantAnalyticsPage from '@/merchant/pages/AnalyticsPage'
-import MerchantSettingsPage  from '@/merchant/pages/SettingsPage'
-
-// Demo store ID — in production this comes from auth/session
-const DEMO_STORE_ID = 'demo-store-id'
-const DEMO_STORE = {
-  id: DEMO_STORE_ID, name: 'Avra Souvlaki', slug:'avra',
-  category: 'restaurant' as any, cuisine_tags: ['Ελληνική'],
-  address: 'Ερμού 45', city: 'Αθήνα', lat: 37.97, lng: 23.73,
-  delivery_fee: 1.50, min_order_amount: 5, avg_delivery_time: 25,
-  delivery_radius_km: 5, is_open: true, is_active: true, is_promoted: false,
-  rating: 4.8, review_count: 342, free_delivery_above: null, discount_pct: null,
-  logo_url: null, cover_url: null, phone: null, email: null,
-  description: null, created_at: '', updated_at: '', emoji: '🥙',
-}
+import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/authStore'
+import { useMyStores } from './useMyStore'
+import { Tabs, Select } from '@/admin/ui'
+import { Spinner } from '@/components/ui'
+import POSPage from './pages/POSPage'
+import MerchantMenuPage from './pages/MenuPage'
+import MerchantAnalyticsPage from './pages/AnalyticsPage'
+import MerchantSettingsPage from './pages/SettingsPage'
 
 type TabId = 'pos' | 'menu' | 'analytics' | 'settings'
 
-const NAV_TABS: { id: TabId; icon: string; label: string }[] = [
-  { id: 'pos',       icon: '📋', label: 'POS'       },
-  { id: 'menu',      icon: '🍽️',  label: 'Μενού'    },
-  { id: 'analytics', icon: '📊', label: 'Analytics' },
-  { id: 'settings',  icon: '⚙️',  label: 'Ρυθμίσεις'},
-]
-
 export default function MerchantApp() {
   const [tab, setTab] = useState<TabId>('pos')
-  const { setStore, pendingOrders, isOnline } = useMerchantStore()
+  const [storeId, setStoreId] = useState<string>('')
+  const navigate = useNavigate()
+  const { profile, signOut } = useAuthStore()
+  const storesQ = useMyStores()
 
+  const stores = useMemo(() => storesQ.data ?? [], [storesQ.data])
   useEffect(() => {
-    setStore(DEMO_STORE as any)
-  }, [setStore])
+    if (!storeId && stores.length > 0) setStoreId(stores[0].id)
+  }, [stores, storeId])
+
+  if (storesQ.isLoading) {
+    return <div className="dash-container py-20 flex justify-center"><Spinner size={30} /></div>
+  }
+
+  if (stores.length === 0) {
+    return (
+      <div className="dash-container px-5 py-16 text-center">
+        <p className="text-4xl mb-3">🏪</p>
+        <h1 className="font-display font-black text-xl">Δεν είσαι συνδεδεμένος με κατάστημα</h1>
+        <p className="text-sm text-ink-2 mt-2 max-w-md mx-auto">
+          Ζήτησε από τον διαχειριστή να συνδέσει τον λογαριασμό σου με ένα κατάστημα
+          (Διαχείριση → Χρήστες → 🔗 Κατάστημα).
+        </p>
+        <p className="text-xs text-ink-3 mt-3">
+          Λογαριασμός: <code>{profile?.id}</code>
+        </p>
+        <button className="btn btn-secondary btn-md mt-5" onClick={() => navigate('/home')}>
+          Επιστροφή στην εφαρμογή
+        </button>
+      </div>
+    )
+  }
+
+  const store = stores.find(s => s.id === storeId) ?? stores[0]
+
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'pos', label: '📋 Παραγγελίες' },
+    { id: 'menu', label: '🍽️ Μενού' },
+    { id: 'analytics', label: '📊 Στατιστικά' },
+    { id: 'settings', label: '⚙️ Ρυθμίσεις' },
+  ]
 
   return (
-    <div className="flex flex-col h-full bg-surface-2">
-      {/* Status bar */}
-      <div className="h-11 bg-ink-1 flex-shrink-0" />
+    <div className="dash-container px-4 md:px-6 py-4">
+      <header className="no-print flex items-center justify-between gap-4 mb-4 flex-wrap">
+        <div>
+          <h1 className="font-display font-black text-2xl text-ink-1">{store.name}</h1>
+          <p className="text-xs text-ink-3">
+            {store.is_open ? '🟢 Ανοιχτό' : '🔴 Κλειστό'} · {store.address}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {stores.length > 1 && (
+            <Select className="max-w-[220px]" value={store.id} onChange={e => setStoreId(e.target.value)}>
+              {stores.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          )}
+          {profile?.role === 'admin' && (
+            <button className="btn btn-secondary btn-md" onClick={() => navigate('/admin')}>Διαχείριση</button>
+          )}
+          <button className="btn btn-ghost btn-md" onClick={() => { void signOut(); navigate('/auth') }}>Έξοδος</button>
+        </div>
+      </header>
 
-      {/* Content */}
-      <div className="flex-1 overflow-hidden bg-surface-1">
-        {tab === 'pos'       && <POSPage storeId={DEMO_STORE_ID} />}
-        {tab === 'menu'      && <MerchantMenuPage storeId={DEMO_STORE_ID} />}
-        {tab === 'analytics' && <MerchantAnalyticsPage storeId={DEMO_STORE_ID} />}
-        {tab === 'settings'  && <MerchantSettingsPage store={DEMO_STORE as any} />}
+      <div className="no-print"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
+
+      <div className="py-5">
+        {tab === 'pos' && <POSPage storeId={store.id} />}
+        {tab === 'menu' && <MerchantMenuPage storeId={store.id} storeName={store.name} />}
+        {tab === 'analytics' && <MerchantAnalyticsPage storeId={store.id} />}
+        {tab === 'settings' && <MerchantSettingsPage store={store} />}
       </div>
-
-      {/* Bottom nav */}
-      <nav className="bottom-nav">
-        {NAV_TABS.map(t => (
-          <button key={t.id} className={`nav-item ${tab === t.id ? 'active' : ''}`}
-                  onClick={() => setTab(t.id)}>
-            <div className="nav-item-icon relative">
-              {t.icon}
-              {t.id === 'pos' && pendingOrders.length > 0 && (
-                <span className="absolute -top-1 -right-2 bg-danger text-white text-[10px]
-                                 font-bold rounded-full w-4 h-4 flex items-center justify-center animate-pulse">
-                  {pendingOrders.length}
-                </span>
-              )}
-            </div>
-            <span className="nav-item-label">{t.label}</span>
-          </button>
-        ))}
-      </nav>
     </div>
   )
 }

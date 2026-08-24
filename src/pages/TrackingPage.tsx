@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useOrder, useOrderRealtime } from '@/hooks/useDelivr'
-import { BackHeader, OrderStatusBadge, Divider, Spinner } from '@/components/ui'
+import { BackHeader, Divider } from '@/components/ui'
 import type { OrderStatus } from '@/types'
 
 const STEPS: { status: OrderStatus; icon: string; label: string }[] = [
@@ -18,7 +18,7 @@ const STATUS_INDEX: Record<string, number> = {
 export default function TrackingPage() {
   const { orderId } = useParams<{ orderId: string }>()
   const navigate    = useNavigate()
-  const { data: order, isLoading } = useOrder(orderId === 'active' ? '' : orderId!)
+  const { data: _order, isLoading: _isLoading } = useOrder(orderId === 'active' ? '' : orderId!)
   const [stepIdx, setStepIdx]       = useState(2) // demo: on_the_way
 
   // Real-time updates
@@ -34,7 +34,7 @@ export default function TrackingPage() {
     return () => clearTimeout(t)
   }, [stepIdx, orderId])
 
-  const currentStep = STEPS[stepIdx]
+  const _currentStep = STEPS[stepIdx]
   const eta = stepIdx < 3 ? `~${Math.max(2, 12 - stepIdx * 4)} λεπτά` : 'Παραδόθηκε! 🎉'
 
   return (

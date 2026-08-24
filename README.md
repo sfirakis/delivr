@@ -1,148 +1,168 @@
-# 🛵 Delivr — SaaS Takeaway & Delivery App
+# 🛵 Delivr — Delivery & Take away με QR ανά κατάλυμα
 
-**Customer App** | React + TypeScript + Vite + Tailwind CSS + Supabase
+Αυτόνομη πλατφόρμα παραγγελιών για μια περιοχή. Ο επισκέπτης ενός σπιτιού/βίλας/δωματίου
+σκανάρει το QR που βρίσκεται μέσα στο κατάλυμα, βλέπει **μόνο** τα καταστήματα που
+παραδίδουν **σε αυτή τη διεύθυνση**, παραγγέλνει χωρίς λογαριασμό, και το κατάστημα
+επιβεβαιώνει από έναν σύνδεσμο που φτάνει με email — επίσης χωρίς λογαριασμό.
 
 ---
 
-## 🚀 Quick Start (5 λεπτά)
+## Τι κάνει
 
-### 1. Κλωνοποίηση & εγκατάσταση
+| Ρόλος | Πού | Τι μπορεί να κάνει |
+|---|---|---|
+| **Επισκέπτης** | `/qr/ΚΩΔΙΚΟΣ` | Delivery ή take away, μενού, καλάθι, παραγγελία με όνομα + τηλέφωνο. Χωρίς εγγραφή. |
+| **Επισκέπτης** | `/t/TOKEN` | Ζωντανή κατάσταση παραγγελίας, κλήση καταστήματος, αποστολή στο WhatsApp. |
+| **Κατάστημα** | `/s/TOKEN` | Αποδοχή με χρόνο ετοιμασίας, απόρριψη με αιτία, προώθηση σταδίων, εκτύπωση 80mm. Χωρίς login. |
+| **Κατάστημα** | `/merchant` | POS με ήχο νέας παραγγελίας, μενού + εισαγωγή μενού, ωράριο, ζώνες, στατιστικά. |
+| **Διανομέας** | `/driver` | Διαθέσιμες παραδόσεις, ανάληψη, πλοήγηση, είσπραξη μετρητών. |
+| **Master admin** | `/admin` | Καταστήματα, ζώνες, καταλύματα + QR, παραγγελίες, χρεώσεις/προμήθειες, χρήστες, ρυθμίσεις. |
+
+Γλώσσες: **Ελληνικά + English** παντού στο guest flow, με ορατό διακόπτη ΕΛ/EN.
+Η γλώσσα ανιχνεύεται από τον browser και μπορεί να προκαθοριστεί ανά κατάλυμα.
+
+---
+
+## Πώς αποφασίζεται ποιος παραδίδει πού
+
+Δύο μηχανισμοί, με αυτή τη σειρά:
+
+1. **Ζώνες** — κάθε κατάστημα ορίζει ζώνες με **περιοχή** ή **Τ.Κ.**, καθεμία με δικά της
+   μεταφορικά, ελάχιστη παραγγελία, δωρεάν όριο και επιπλέον λεπτά. Το κατάλυμα ταιριάζει
+   με μια ζώνη όταν συμπίπτει ο Τ.Κ. ή η περιοχή (η σύγκριση αγνοεί τόνους και κεφαλαία).
+2. **Ακτίνα km** — αν δεν ταιριάξει καμία ζώνη, υπολογίζεται η απόσταση από τις
+   συντεταγμένες του καταστήματος προς το κατάλυμα και συγκρίνεται με το
+   `delivery_radius_km` (ή `pickup_radius_km` για take away).
+
+Έτσι το σύστημα δουλεύει και χωρίς ακριβές geocoding: αρκεί να συμπληρωθεί η περιοχή.
+
+---
+
+## Χρεώσεις
+
+Ρυθμίζονται στο **Διαχείριση → Ρυθμίσεις** και υπερισχύουν ανά κατάστημα ή ανά κατάλυμα:
+
+- **Ποιον χρεώνουμε:** κατάστημα ή/και κατάλυμα, ανεξάρτητα.
+- **Πώς:** `commission` (ποσοστό ανά παραγγελία) ή `flat` (σταθερό ποσό ανά παραγγελία) ή καθόλου.
+- **Βάση υπολογισμού:** αξία προϊόντων ή τελικό σύνολο.
+- **Κατεύθυνση για το κατάλυμα:** `payout` (το κατάλυμα εισπράττει) ή `charge` (το κατάλυμα πληρώνει).
+
+Κάθε παραγγελία γράφει εγγραφές στο `order_charges` — ένα λογιστικό μητρώο με κατάσταση
+`pending → invoiced → paid`. Το **Διαχείριση → Χρεώσεις** δείχνει σύνολα ανά συμβαλλόμενο,
+μαζική αλλαγή κατάστασης και εξαγωγή CSV.
+
+---
+
+## Ειδοποιήσεις
+
+- **Email στο κατάστημα** (Resend) με πλήρη παραγγελία και **κουμπί επιβεβαίωσης** που
+  ανοίγει το `/s/TOKEN`. Αν λείπει το `RESEND_API_KEY`, η παραγγελία περνάει κανονικά και
+  απλώς καταγράφεται ως `skipped` — ο σύνδεσμος υπάρχει πάντα στο admin.
+- **WhatsApp** μέσω έτοιμου `wa.me` συνδέσμου με τη σύνοψη της παραγγελίας. Δουλεύει σήμερα,
+  χωρίς εγκρίσεις και χωρίς κόστος. Το επίσημο WhatsApp Cloud API μπαίνει pluggable αργότερα.
+- **Email επιβεβαίωσης στον πελάτη** όταν δώσει email.
+- Κάθε προσπάθεια καταγράφεται στο `order_dispatch_log`.
+
+---
+
+## Εκκίνηση
+
 ```bash
-git clone <your-repo>
-cd delivr-app
 npm install
-```
-
-### 2. Supabase setup
-1. Πήγαινε στο [supabase.com](https://supabase.com) → **New Project**
-2. Αντίγραψε το `supabase-schema.sql` και τρέξε το στο **SQL Editor**
-3. Αντίγραψε το **Project URL** και το **anon key** από **Settings → API**
-
-### 3. Environment variables
-```bash
-cp .env.example .env.local
-# Άνοιξε .env.local και συμπλήρωσε τα keys
-```
-
-```env
-VITE_SUPABASE_URL=https://xxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGc...
-```
-
-### 4. Εκκίνηση
-```bash
+cp .env.example .env.local     # συμπλήρωσε VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
 npm run dev
-# → http://localhost:5173
 ```
 
----
+### Βάση δεδομένων
 
-## 📁 Δομή project
+Τρέξε με τη σειρά στο **Supabase → SQL Editor**:
 
 ```
-delivr/
-├── src/
-│   ├── components/
-│   │   ├── ui/          # Reusable UI (Button, Skeleton, Toggle, κλπ)
-│   │   ├── store/       # StoreCard, MenuItemCard
-│   │   └── layout/      # AppShell, BottomNav
-│   ├── pages/           # Screens (Home, Store, Cart, Checkout, Tracking, Orders, Profile)
-│   ├── hooks/           # React Query hooks (useDelivr.ts)
-│   ├── store/           # Zustand (cartStore, authStore)
-│   ├── lib/             # Supabase client
-│   ├── types/           # TypeScript types
-│   └── styles/          # globals.css (Tailwind + custom)
-├── supabase-schema.sql  # Full DB schema — τρέξε αυτό πρώτα
-└── .env.example
+supabase-schema.sql                                  # βασικό schema
+supabase/migrations/002_driver_sessions_notifications.sql
+supabase/migrations/003_platform_schema.sql          # καταλύματα, ζώνες, χρεώσεις, guest orders
+supabase/migrations/004_helpers_and_rls.sql          # RLS + helper functions
+supabase/migrations/005_public_api.sql               # δημόσιο API (QR flow)
+supabase/migrations/006_place_order.sql              # καταχώρηση παραγγελίας
+supabase/migrations/007_tracking_and_store_actions.sql
+supabase/seed/demo_crete.sql                         # προαιρετικά: demo δεδομένα
 ```
 
----
-
-## 🔧 Tech Stack
-
-| Layer         | Technology                    |
-|--------------|-------------------------------|
-| Frontend     | React 18 + TypeScript + Vite  |
-| Styling      | Tailwind CSS 3 (custom tokens) |
-| State        | Zustand (cart, auth)          |
-| Server state | TanStack Query v5              |
-| Backend      | Supabase (PostgreSQL)         |
-| Auth         | Supabase Auth (email + Google)|
-| Realtime     | Supabase Realtime             |
-| Payments     | Stripe (ready, needs key)     |
-
----
-
-## 📱 Pages / Screens
-
-| Route              | Screen           | Auth |
-|--------------------|-----------------|------|
-| `/`                | Splash           | –    |
-| `/auth`            | Login / Register | –    |
-| `/home`            | Home + Search    | ✓    |
-| `/store/:id`       | Store + Menu     | ✓    |
-| `/cart`            | Καλάθι          | ✓    |
-| `/checkout`        | Πληρωμή         | ✓    |
-| `/track/:orderId`  | Live Tracking    | ✓    |
-| `/orders`          | Ιστορικό        | ✓    |
-| `/profile`         | Προφίλ          | ✓    |
-| `/favorites`       | Αγαπημένα       | ✓    |
-
----
-
-## 🗄️ Database Tables
-
-- `profiles` — Users (extends Supabase auth)
-- `stores` — Καταστήματα (εστιατόρια, καφέ, supermarket)
-- `menu_categories` + `menu_items` — Μενού
-- `item_modifier_groups` + `item_modifiers` — Extras/options
-- `orders` + `order_items` — Παραγγελίες
-- `reviews` — Αξιολογήσεις
-- `promo_codes` + `promo_uses` — Κουπόνια
-- `addresses` — Αποθηκευμένες διευθύνσεις
-- `payment_methods` — Αποθηκευμένες κάρτες (Stripe)
-- `favorites` — Αγαπημένα καταστήματα
-- `notifications` — Push notifications
-
----
-
-## 🧪 Test promo codes
-- `WELCOME20` → -20% στο σύνολο
-- `DELIVR10`  → -10% στο σύνολο
-
----
-
-## 📋 Next steps
-
-### Module 2 — Merchant Dashboard
-- POS για αποδοχή παραγγελιών
-- Διαχείριση μενού (CRUD)
-- Analytics & reports
-
-### Module 3 — Driver App
-- Route optimization
-- Proof of delivery
-- Earnings dashboard
-
-### Module 4 — Admin Panel
-- Multi-tenant management
-- Commission settings
-- Platform analytics
-
----
-
-## 🚢 Deploy
+### Edge function (email)
 
 ```bash
-# Build
-npm run build
-
-# Deploy στο Vercel (recommended)
-npx vercel --prod
+supabase functions deploy notify-order
+# Dashboard → Edge Functions → Secrets:
+#   RESEND_API_KEY=re_...
+#   RESEND_FROM=Delivr <orders@yourdomain.com>
 ```
 
-Πρόσθεσε τα env vars στο Vercel dashboard πριν το deploy.
+### Πρώτος διαχειριστής
+
+Κάνε εγγραφή από το `/auth` και μετά μία φορά στο SQL Editor:
+
+```sql
+update profiles set role = 'admin' where email = 'you@example.com';
+```
+
+Στη συνέχεια όλα ρυθμίζονται από το `/admin`.
+
+### Σύνδεση χρήστη με κατάστημα
+
+`Διαχείριση → Χρήστες → 🔗 Κατάστημα`. Ο χρήστης βλέπει τότε το `/merchant`.
 
 ---
 
-Φτιαγμένο με ❤️ για το Delivr SaaS Platform
+## Εισαγωγή δεδομένων
+
+**Μενού που υπάρχει ήδη** (`Διαχείριση → Καταστήματα → Εισαγωγή μενού`, ή από το merchant):
+επικόλληση κειμένου από PDF/Word, CSV (`category;name;description;price`) ή JSON.
+Ο parser αναγνωρίζει κατηγορίες (κεφαλαία ή γραμμή με άνω-κάτω τελεία), τιμές με κόμμα ή
+τελεία, dot leaders (`Πίτα γύρο ..... 4,20`) και μετατρέπει τη γραμμή χωρίς τιμή σε
+περιγραφή του από πάνω προϊόντος. Όλα είναι επεξεργάσιμα σε preview πριν αποθηκευτούν.
+
+**Καταλύματα** (`Διαχείριση → Καταλύματα & QR → Μαζική εισαγωγή`): CSV ή JSON με
+`name, address, area, postal_code, lat, lng, phone…` (και τα ελληνικά αντίστοιχα).
+Όπου λείπει κωδικός QR, δημιουργείται μοναδικός.
+Για άντληση από το **Bookingsway/Hospitable** δες το
+[`docs/bookingsway-properties-endpoint.php`](docs/bookingsway-properties-endpoint.php) —
+το υπάρχον `bw/v1/properties` επιστρέφει μόνο ονόματα, ο κώδικας εκεί προσθέτει endpoint
+με διεύθυνση και συντεταγμένες.
+
+---
+
+## QR κωδικοί
+
+`Διαχείριση → Καταλύματα & QR → 🔳` δημιουργεί QR (PNG για λήψη ή εκτυπώσιμη κάρτα με
+όνομα καταλύματος, κωδικό και οδηγίες). Το URL είναι `{app_url}/qr/{ΚΩΔΙΚΟΣ}` —
+το `app_url` ορίζεται στις ρυθμίσεις πλατφόρμας.
+
+---
+
+## Έλεγχοι
+
+```bash
+npm run typecheck
+npm run build
+npm run dev        # σε άλλο terminal
+npm run e2e        # 20 έλεγχοι σε πραγματικό browser (Playwright)
+```
+
+Τα e2e τρέχουν με προσομοιωμένες αποκρίσεις Supabase, οπότε δεν χρειάζονται δίκτυο ή
+δεδομένα: καλύπτουν το QR landing, τον διακόπτη γλώσσας, τα extras και τις τιμές, το
+ελάχιστο παραγγελίας, το checkout, το payload που φτάνει στον server, τη σελίδα
+παρακολούθησης με τον σύνδεσμο WhatsApp, καθώς και όλη τη ροή επιβεβαίωσης/απόρριψης/
+εκτύπωσης του καταστήματος.
+
+---
+
+## Roadmap
+
+- **Online πληρωμές** — η υποδομή είναι έτοιμη: `allow_online_payment` στις ρυθμίσεις,
+  `payment_method`/`payment_status` στις παραγγελίες, `accepts_online` ανά κατάστημα.
+  Μένει ο πάροχος (Stripe ή Viva Wallet για ελληνική αγορά) + webhook που θα γράφει
+  `payment_status = 'paid'`.
+- **WhatsApp Cloud API** — αυτόματη αποστολή αντί για `wa.me` σύνδεσμο.
+- **Push notifications** στο κατάστημα (τα `fcm_token` πεδία υπάρχουν ήδη).
+- **Live tracking διανομέα** στον χάρτη (ο πίνακας `driver_sessions` υπάρχει).
+- **Αξιολογήσεις** από τον επισκέπτη μετά την παράδοση.

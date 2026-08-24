@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useMerchantMenu, useToggleItemAvailability, useUpsertMenuItem, useDeleteMenuItem } from '@/merchant/hooks'
-import { Skeleton, Divider, Toggle } from '@/components/ui'
-import type { MenuItem, MenuCategory } from '@/types'
+import { Skeleton, Toggle } from '@/components/ui'
+import type { MenuItem } from '@/types'
 import toast from 'react-hot-toast'
+import MenuImport from '@/components/menu/MenuImport'
 
 // ─── Item edit sheet ──────────────────────────────────────────
 function ItemEditSheet({ item, storeId, categoryId, onClose }: {
@@ -131,13 +132,14 @@ function ItemEditSheet({ item, storeId, categoryId, onClose }: {
 }
 
 // ─── Main Menu Management page ────────────────────────────────
-export default function MerchantMenuPage({ storeId }: { storeId: string }) {
+export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId: string; storeName?: string }) {
   const { data: menu, isLoading } = useMerchantMenu(storeId)
   const toggleAvail   = useToggleItemAvailability(storeId)
   const deleteItem    = useDeleteMenuItem(storeId)
   const [editItem, setEditItem]     = useState<MenuItem | null | 'new'>(null)
   const [filterCat, setFilterCat]   = useState('all')
   const [search, setSearch]         = useState('')
+  const [importOpen, setImportOpen] = useState(false)
 
   const allItems = menu?.items ?? []
   const filtered = allItems.filter(i => {
@@ -164,9 +166,14 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
       <div className="px-5 pt-6 pb-4 border-b border-surface-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-black text-xl">Μενού</h2>
-          <button className="btn btn-primary btn-sm gap-1.5" onClick={() => setEditItem('new')}>
-            + Νέο προϊόν
-          </button>
+          <div className="flex gap-2">
+            <button className="btn btn-secondary btn-sm gap-1.5" onClick={() => setImportOpen(true)}>
+              📋 Εισαγωγή μενού
+            </button>
+            <button className="btn btn-primary btn-sm gap-1.5" onClick={() => setEditItem('new')}>
+              + Νέο προϊόν
+            </button>
+          </div>
         </div>
         {/* Search */}
         <div className="flex items-center gap-2 bg-surface-2 rounded-full px-4 py-2.5 mb-3">
@@ -236,6 +243,9 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
           categoryId={filterCat !== 'all' ? filterCat : undefined}
           onClose={() => setEditItem(null)}
         />
+      )}
+      {importOpen && (
+        <MenuImport storeId={storeId} storeName={storeName} onClose={() => setImportOpen(false)} />
       )}
     </div>
   )

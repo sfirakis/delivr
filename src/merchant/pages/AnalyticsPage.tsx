@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useMerchantAnalytics } from '@/merchant/hooks'
 import { Skeleton } from '@/components/ui'
 
-function MiniBar({ value, max, color = '#FF4500' }: { value: number; max: number; color?: string }) {
+function _MiniBar({ value, max, color = '#FF4500' }: { value: number; max: number; color?: string }) {
   const pct = max > 0 ? (value / max) * 100 : 0
   return (
     <div className="flex items-end gap-1 h-full">

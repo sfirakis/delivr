@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
+import { I18nProvider } from '@/lib/i18n'
 import '@/styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
+        <I18nProvider>
         <App />
         <Toaster
           position="top-center"
@@ -28,7 +30,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             style: {
               background: '#1A1814',
               color: '#F8F7F5',
-              fontFamily: 'DM Sans, sans-serif',
+              fontFamily: 'Verdana, Arial, sans-serif',
               fontSize: '14px',
               fontWeight: 500,
               borderRadius: '50px',
@@ -43,6 +45,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             },
           }}
         />
+        </I18nProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>

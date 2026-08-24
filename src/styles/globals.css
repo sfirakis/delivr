@@ -17,12 +17,13 @@
   }
 
   body {
-    @apply font-body text-ink-1 bg-black antialiased;
+    @apply text-ink-1 bg-surface-2 antialiased;
+    font-family: Verdana, Arial, 'DM Sans', sans-serif;
     overscroll-behavior: none;
   }
 
   input, textarea, select, button {
-    @apply font-body;
+    font-family: inherit;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -41,7 +42,7 @@
     @apply relative mx-auto bg-surface-1 overflow-hidden flex flex-col w-full;
     max-width: 430px;
     height: 100dvh;
-    box-shadow: 0 0 80px rgba(0,0,0,0.6);
+    box-shadow: 0 0 60px rgba(0,0,0,0.12);
   }
 
   @screen md {
@@ -314,4 +315,58 @@
   0%   { left: 28%; }
   50%  { left: 52%; }
   100% { left: 38%; }
+}
+
+
+/* ─── Print: 80mm thermal receipt ──────────────────────────── */
+.print-ticket { display: none; }
+
+@media print {
+  body { background: #fff !important; }
+  .no-print, .bottom-nav, .cart-bar { display: none !important; }
+
+  .print-ticket {
+    display: block !important;
+    width: 72mm;
+    margin: 0;
+    padding: 0;
+    color: #000;
+    background: #fff;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .print-ticket .pt-center { text-align: center; }
+  .print-ticket .pt-bold   { font-weight: 700; }
+  .print-ticket .pt-big    { font-size: 14px; }
+  .print-ticket .pt-small  { font-size: 10px; }
+  .print-ticket .pt-sep    { border-top: 1px dashed #000; margin: 4px 0; }
+  .print-ticket .pt-row    { display: flex; justify-content: space-between; gap: 6px; }
+  .print-ticket .pt-item   { margin-bottom: 3px; }
+
+  @page { size: 80mm auto; margin: 3mm; }
+}
+
+/* ─── Dashboard shell (full width, unlike the phone frame) ─── */
+.dash-shell {
+  @apply min-h-screen w-full bg-surface-2;
+}
+.dash-container {
+  @apply mx-auto w-full;
+  max-width: 1400px;
+}
+.dash-card {
+  @apply bg-surface-1 border border-surface-4 rounded-2xl;
+}
+.dash-table {
+  @apply w-full text-sm;
+}
+.dash-table th {
+  @apply text-left text-[11px] uppercase tracking-wide text-ink-3 font-bold px-3 py-2 whitespace-nowrap;
+}
+.dash-table td {
+  @apply px-3 py-2.5 border-t border-surface-4 align-middle;
+}
+.dash-table tbody tr:hover {
+  @apply bg-surface-2;
 }

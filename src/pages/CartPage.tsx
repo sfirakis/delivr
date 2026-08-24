@@ -5,12 +5,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useCartStore } from '@/store/cartStore'
 import { BackHeader, QtyStepper, Divider, EmptyState } from '@/components/ui'
-import toast from 'react-hot-toast'
 
 export function CartPage() {
   const navigate = useNavigate()
   const { items, storeName, storeEmoji, storeDeliveryFee,
-          updateQuantity, clearCart, subtotal } = useCartStore()
+          updateQuantity, clearCart: _clearCart, subtotal } = useCartStore()
 
   const [deliveryType, setDeliveryType] = useState<'delivery'|'pickup'>('delivery')
   const [promoCode, setPromoCode]       = useState('')

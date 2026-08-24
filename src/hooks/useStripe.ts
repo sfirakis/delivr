@@ -122,7 +122,7 @@ export function useStripePayment() {
       }
 
       // 4. Confirm order server-side
-      const confirmation = await confirmOrderAfterPayment(opts.orderId, paymentIntentId)
+      const _confirmation = await confirmOrderAfterPayment(opts.orderId, paymentIntentId)
 
       return {
         success:         true,

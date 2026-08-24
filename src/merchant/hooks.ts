@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { MenuItem, MenuCategory, Store } from '@/types'
+import type { MenuItem, MenuCategory } from '@/types'
 
 // ─── Store menu management ────────────────────────────────────
 export function useMerchantMenu(storeId: string) {
