@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useMerchantMenu, useToggleItemAvailability, useUpsertMenuItem, useDeleteMenuItem } from '@/merchant/hooks'
-import { Skeleton, Divider, Toggle } from '@/components/ui'
-import type { MenuItem, MenuCategory } from '@/types'
+import { Skeleton, Toggle } from '@/components/ui'
+import type { MenuItem } from '@/types'
 import toast from 'react-hot-toast'
+import MenuImport from '@/components/menu/MenuImport'
+import ModifierEditor from '@/components/menu/ModifierEditor'
 
 // ─── Item edit sheet ──────────────────────────────────────────
 function ItemEditSheet({ item, storeId, categoryId, onClose }: {
@@ -131,13 +133,15 @@ function ItemEditSheet({ item, storeId, categoryId, onClose }: {
 }
 
 // ─── Main Menu Management page ────────────────────────────────
-export default function MerchantMenuPage({ storeId }: { storeId: string }) {
+export default function MerchantMenuPage({ storeId, storeName = '' }: { storeId: string; storeName?: string }) {
   const { data: menu, isLoading } = useMerchantMenu(storeId)
   const toggleAvail   = useToggleItemAvailability(storeId)
   const deleteItem    = useDeleteMenuItem(storeId)
   const [editItem, setEditItem]     = useState<MenuItem | null | 'new'>(null)
   const [filterCat, setFilterCat]   = useState('all')
   const [search, setSearch]         = useState('')
+  const [importOpen, setImportOpen] = useState(false)
+  const [extrasFor, setExtrasFor] = useState<MenuItem | null>(null)
 
   const allItems = menu?.items ?? []
   const filtered = allItems.filter(i => {
@@ -164,9 +168,14 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
       <div className="px-5 pt-6 pb-4 border-b border-surface-4 flex-shrink-0">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-black text-xl">Μενού</h2>
-          <button className="btn btn-primary btn-sm gap-1.5" onClick={() => setEditItem('new')}>
-            + Νέο προϊόν
-          </button>
+          <div className="flex gap-2">
+            <button className="btn btn-secondary btn-sm gap-1.5" onClick={() => setImportOpen(true)}>
+              📋 Εισαγωγή μενού
+            </button>
+            <button className="btn btn-primary btn-sm gap-1.5" onClick={() => setEditItem('new')}>
+              + Νέο προϊόν
+            </button>
+          </div>
         </div>
         {/* Search */}
         <div className="flex items-center gap-2 bg-surface-2 rounded-full px-4 py-2.5 mb-3">
@@ -213,6 +222,11 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
               <div className="flex items-center gap-2 mt-0.5">
                 <span className="font-display font-bold text-sm text-brand">{item.price.toFixed(2)}€</span>
                 {!item.is_available && <span className="badge badge-amber text-[10px]">Μη διαθέσιμο</span>}
+                {(item.modifier_groups?.length ?? 0) > 0 && (
+                  <span className="badge badge-gray text-[10px]">
+                    +{item.modifier_groups!.reduce((n, g) => n + (g.modifiers?.length ?? 0), 0)} extras
+                  </span>
+                )}
               </div>
             </div>
             {/* Controls */}
@@ -221,6 +235,8 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
                 checked={item.is_available}
                 onChange={(v) => toggleAvail.mutate({ itemId: item.id, available: v })}
               />
+              <button className="btn-icon w-9 h-9 text-sm" title="Extras & επιλογές"
+                      onClick={() => setExtrasFor(item)}>➕</button>
               <button className="btn-icon w-9 h-9 text-sm" onClick={() => setEditItem(item)}>✏️</button>
               <button className="btn-icon w-9 h-9 text-sm text-danger" onClick={() => handleDelete(item)}>🗑️</button>
             </div>
@@ -236,6 +252,13 @@ export default function MerchantMenuPage({ storeId }: { storeId: string }) {
           categoryId={filterCat !== 'all' ? filterCat : undefined}
           onClose={() => setEditItem(null)}
         />
+      )}
+      {importOpen && (
+        <MenuImport storeId={storeId} storeName={storeName} onClose={() => setImportOpen(false)} />
+      )}
+      {extrasFor && (
+        <ModifierEditor storeId={storeId} itemId={extrasFor.id} itemName={extrasFor.name}
+                        onClose={() => setExtrasFor(null)} />
       )}
     </div>
   )

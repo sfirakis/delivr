@@ -2,9 +2,8 @@ import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useStore, useStoreMenu } from '@/hooks/useDelivr'
 import { useCartStore } from '@/store/cartStore'
-import { useAuthStore } from '@/store/authStore'
 import MenuItemCard from '@/components/store/MenuItemCard'
-import { BackHeader, StarRating, Skeleton } from '@/components/ui'
+import { StarRating, Skeleton } from '@/components/ui'
 import toast from 'react-hot-toast'
 
 export default function StorePage() {
@@ -22,7 +21,7 @@ export default function StorePage() {
 
   const isLoading = storeLoading || menuLoading
 
-  const handleAddFromDifferentStore = () => {
+  const _handleAddFromDifferentStore = () => {
     if (storeId && clearIfDifferentStore(storeId)) {
       if (confirm('Το καλάθι σου περιέχει προϊόντα από άλλο κατάστημα. Να το αδειάσω;')) {
         useCartStore.getState().clearCart()
@@ -45,8 +44,8 @@ export default function StorePage() {
 
   if (!store) return null
 
-  const categories = ['all', ...(menu?.categories.map(c => c.id) ?? [])]
-  const categoryMap = Object.fromEntries(menu?.categories.map(c => [c.id, c.name]) ?? [])
+  const _categories = ['all', ...(menu?.categories.map(c => c.id) ?? [])]
+  const _categoryMap = Object.fromEntries(menu?.categories.map(c => [c.id, c.name]) ?? [])
 
   const filteredItems = activeCategory === 'all'
     ? (menu?.items ?? [])

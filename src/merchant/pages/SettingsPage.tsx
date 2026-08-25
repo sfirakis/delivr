@@ -1,128 +1,214 @@
-import { useState } from 'react'
-import { supabase } from '@/lib/supabase'
-import { Toggle, Divider } from '@/components/ui'
-import type { Store } from '@/types'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
+import { supabase } from '@/lib/supabase'
+import { Card, Field, TextInput, TextArea, CheckRow } from '@/admin/ui'
+import { useZones } from '@/admin/hooks'
+import type { AdminStore } from '@/admin/hooks'
+import { money } from '@/lib/format'
+import { Spinner } from '@/components/ui'
 
-const DAYS = ['Κυριακή','Δευτέρα','Τρίτη','Τετάρτη','Πέμπτη','Παρασκευή','Σάββατο']
+const DAYS = ['Κυριακή', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο']
 
-export default function MerchantSettingsPage({ store }: { store: Store }) {
-  const [form, setForm] = useState({
-    name:              store.name,
-    description:       store.description ?? '',
-    phone:             store.phone ?? '',
-    email:             store.email ?? '',
-    delivery_fee:      store.delivery_fee.toString(),
-    free_delivery_above: store.free_delivery_above?.toString() ?? '',
-    min_order_amount:  store.min_order_amount.toString(),
-    avg_delivery_time: store.avg_delivery_time.toString(),
-    delivery_radius_km:store.delivery_radius_km.toString(),
-  })
+interface Hours { day_of_week: number; open_time: string | null; close_time: string | null; is_closed: boolean }
+
+export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
+  const qc = useQueryClient()
+  const [form, setForm] = useState<Partial<AdminStore>>(store)
   const [saving, setSaving] = useState(false)
+  const [hours, setHours] = useState<Hours[]>([])
+  const zonesQ = useZones(store.id)
 
-  const u = (k: string) => (e: React.ChangeEvent<HTMLInputElement|HTMLTextAreaElement>) =>
-    setForm(f => ({ ...f, [k]: e.target.value }))
+  useEffect(() => { setForm(store) }, [store])
 
-  const handleSave = async () => {
+  const hoursQ = useQuery({
+    queryKey: ['store-hours', store.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('store_hours')
+        .select('day_of_week, open_time, close_time, is_closed')
+        .eq('store_id', store.id)
+      if (error) throw new Error(error.message)
+      return (data ?? []) as Hours[]
+    },
+  })
+
+  useEffect(() => {
+    const rows = hoursQ.data ?? []
+    setHours(DAYS.map((_, i) => rows.find(r => r.day_of_week === i)
+      ?? { day_of_week: i, open_time: '09:00', close_time: '23:00', is_closed: false }))
+  }, [hoursQ.data])
+
+  const set = (patch: Partial<AdminStore>) => setForm(f => ({ ...f, ...patch }))
+
+  const save = async () => {
     setSaving(true)
     try {
       const { error } = await supabase.from('stores').update({
-        name:              form.name,
-        description:       form.description || null,
-        phone:             form.phone || null,
-        email:             form.email || null,
-        delivery_fee:      parseFloat(form.delivery_fee),
-        free_delivery_above: form.free_delivery_above ? parseFloat(form.free_delivery_above) : null,
-        min_order_amount:  parseFloat(form.min_order_amount),
-        avg_delivery_time: parseInt(form.avg_delivery_time),
-        delivery_radius_km:parseFloat(form.delivery_radius_km),
-        updated_at:        new Date().toISOString(),
+        name: form.name, description: form.description || null,
+        phone: form.phone || null, email: form.email || null,
+        order_email: form.order_email || null, order_whatsapp: form.order_whatsapp || null,
+        notify_email: form.notify_email, notify_whatsapp: form.notify_whatsapp,
+        delivery_fee: form.delivery_fee, min_order_amount: form.min_order_amount,
+        free_delivery_above: form.free_delivery_above, avg_delivery_time: form.avg_delivery_time,
+        delivery_radius_km: form.delivery_radius_km, pickup_radius_km: form.pickup_radius_km,
+        pickup_discount_pct: form.pickup_discount_pct, prep_time_min: form.prep_time_min,
+        supports_delivery: form.supports_delivery, supports_takeaway: form.supports_takeaway,
+        accepts_cash: form.accepts_cash, auto_accept: form.auto_accept,
+        is_open: form.is_open,
+        updated_at: new Date().toISOString(),
       }).eq('id', store.id)
-      if (error) throw error
-      toast.success('✓ Αποθηκεύτηκε!')
-    } catch (e: any) {
-      toast.error(e.message)
+      if (error) throw new Error(error.message)
+
+      const { error: hErr } = await supabase.from('store_hours')
+        .upsert(hours.map(h => ({ ...h, store_id: store.id })), { onConflict: 'store_id,day_of_week' })
+      if (hErr) throw new Error(hErr.message)
+
+      toast.success('Οι ρυθμίσεις αποθηκεύτηκαν')
+      void qc.invalidateQueries({ queryKey: ['my-stores'] })
+      void qc.invalidateQueries({ queryKey: ['store-hours', store.id] })
+    } catch (e) {
+      toast.error((e as Error).message)
     } finally {
       setSaving(false)
     }
   }
 
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="mb-6">
-      <p className="text-[11px] font-bold text-ink-3 uppercase tracking-wider mb-3 px-5">{title}</p>
-      <div className="bg-surface-1 border-y border-surface-4 px-5 py-4 space-y-4">{children}</div>
-    </div>
-  )
-
-  const Field = ({ label, placeholder, value, onChange, type='text', hint }: any) => (
-    <div>
-      <label className="text-xs font-medium text-ink-2 mb-1.5 block">{label}</label>
-      <input type={type}
-             className="w-full border border-surface-4 rounded-xl px-4 py-2.5 text-sm font-body outline-none focus:border-brand transition-colors"
-             placeholder={placeholder} value={value} onChange={onChange} />
-      {hint && <p className="text-[11px] text-ink-3 mt-1">{hint}</p>}
-    </div>
-  )
+  if (hoursQ.isLoading) return <div className="py-16 flex justify-center"><Spinner size={30} /></div>
 
   return (
-    <div className="flex flex-col h-full overflow-y-auto pb-32">
-      <div className="px-5 pt-6 pb-4 flex-shrink-0">
-        <h2 className="font-display font-black text-xl">Ρυθμίσεις καταστήματος</h2>
-      </div>
-
-      <Section title="Βασικά στοιχεία">
-        <Field label="Όνομα καταστήματος" placeholder="Avra Souvlaki" value={form.name} onChange={u('name')} />
-        <div>
-          <label className="text-xs font-medium text-ink-2 mb-1.5 block">Περιγραφή</label>
-          <textarea className="w-full border border-surface-4 rounded-xl px-4 py-2.5 text-sm font-body outline-none focus:border-brand resize-none"
-                    rows={2} placeholder="Σύντομη περιγραφή..." value={form.description} onChange={u('description')} />
+    <div className="space-y-4 max-w-4xl">
+      <Card title="Κατάσταση καταστήματος">
+        <div className="grid md:grid-cols-3 gap-1">
+          <CheckRow label="Ανοιχτό τώρα" hint="Κλειστό = δεν δέχεται παραγγελίες"
+                    checked={form.is_open ?? true} onChange={v => set({ is_open: v })} />
+          <CheckRow label="Delivery" checked={form.supports_delivery ?? true}
+                    onChange={v => set({ supports_delivery: v })} />
+          <CheckRow label="Take away" checked={form.supports_takeaway ?? true}
+                    onChange={v => set({ supports_takeaway: v })} />
         </div>
-        <Field label="Τηλέφωνο" placeholder="+30 210 1234567" value={form.phone} onChange={u('phone')} />
-        <Field label="Email επικοινωνίας" type="email" placeholder="info@store.gr" value={form.email} onChange={u('email')} />
-      </Section>
+      </Card>
 
-      <Section title="Παράδοση">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Χρέωση delivery (€)" type="number" placeholder="1.50" value={form.delivery_fee} onChange={u('delivery_fee')} />
-          <Field label="Δωρεάν πάνω από (€)" type="number" placeholder="25.00" value={form.free_delivery_above} onChange={u('free_delivery_above')} hint="Προαιρετικό" />
-          <Field label="Ελάχιστη παραγγελία (€)" type="number" placeholder="5.00" value={form.min_order_amount} onChange={u('min_order_amount')} />
-          <Field label="Χρόνος παράδοσης (λεπτά)" type="number" placeholder="30" value={form.avg_delivery_time} onChange={u('avg_delivery_time')} />
+      <Card title="Βασικά στοιχεία">
+        <div className="grid md:grid-cols-2 gap-3">
+          <Field label="Όνομα"><TextInput value={form.name ?? ''} onChange={e => set({ name: e.target.value })} /></Field>
+          <Field label="Τηλέφωνο"><TextInput value={form.phone ?? ''} onChange={e => set({ phone: e.target.value })} /></Field>
+          <Field label="Email"><TextInput type="email" value={form.email ?? ''} onChange={e => set({ email: e.target.value })} /></Field>
+          <Field label="Email παραγγελιών" hint="Εκεί φτάνει το email με τον σύνδεσμο επιβεβαίωσης">
+            <TextInput type="email" value={form.order_email ?? ''} onChange={e => set({ order_email: e.target.value })} />
+          </Field>
+          <Field label="WhatsApp παραγγελιών" hint="Διεθνής μορφή, π.χ. +306900000000">
+            <TextInput value={form.order_whatsapp ?? ''} onChange={e => set({ order_whatsapp: e.target.value })} />
+          </Field>
+          <div className="md:col-span-2">
+            <Field label="Περιγραφή">
+              <TextArea rows={2} value={form.description ?? ''} onChange={e => set({ description: e.target.value })} />
+            </Field>
+          </div>
         </div>
-        <Field label="Ακτίνα παράδοσης (km)" type="number" step="0.5" placeholder="5.0" value={form.delivery_radius_km} onChange={u('delivery_radius_km')} />
-      </Section>
+        <div className="grid md:grid-cols-2 gap-x-6 mt-1">
+          <CheckRow label="Ειδοποίηση email σε κάθε παραγγελία"
+                    checked={form.notify_email ?? true} onChange={v => set({ notify_email: v })} />
+          <CheckRow label="Κουμπί WhatsApp στον πελάτη"
+                    checked={form.notify_whatsapp ?? true} onChange={v => set({ notify_whatsapp: v })} />
+        </div>
+      </Card>
 
-      <Section title="Ώρες λειτουργίας">
-        {DAYS.map((day, idx) => (
-          <div key={day} className="flex items-center gap-3">
-            <span className="text-sm font-medium w-24 text-ink-1">{day}</span>
-            <input type="time" defaultValue="09:00"
-                   className="flex-1 border border-surface-4 rounded-lg px-3 py-2 text-sm font-body outline-none focus:border-brand" />
-            <span className="text-ink-3">—</span>
-            <input type="time" defaultValue="22:00"
-                   className="flex-1 border border-surface-4 rounded-lg px-3 py-2 text-sm font-body outline-none focus:border-brand" />
-            <Toggle checked={idx !== 0} onChange={() => {}} />
-          </div>
-        ))}
-      </Section>
+      <Card title="Παράδοση & παραλαβή">
+        <div className="grid md:grid-cols-3 gap-3">
+          <Field label="Μεταφορικά (€)">
+            <TextInput type="number" step="0.10" value={form.delivery_fee ?? 0}
+                       onChange={e => set({ delivery_fee: Number(e.target.value) })} />
+          </Field>
+          <Field label="Ελάχιστη παραγγελία (€)">
+            <TextInput type="number" step="0.50" value={form.min_order_amount ?? 0}
+                       onChange={e => set({ min_order_amount: Number(e.target.value) })} />
+          </Field>
+          <Field label="Δωρεάν άνω των (€)">
+            <TextInput type="number" step="1" value={form.free_delivery_above ?? ''}
+                       onChange={e => set({ free_delivery_above: e.target.value ? Number(e.target.value) : null })} />
+          </Field>
+          <Field label="Ακτίνα delivery (km)">
+            <TextInput type="number" step="0.5" value={form.delivery_radius_km ?? 5}
+                       onChange={e => set({ delivery_radius_km: Number(e.target.value) })} />
+          </Field>
+          <Field label="Ακτίνα take away (km)">
+            <TextInput type="number" step="0.5" value={form.pickup_radius_km ?? 15}
+                       onChange={e => set({ pickup_radius_km: Number(e.target.value) })} />
+          </Field>
+          <Field label="Έκπτωση take away (%)">
+            <TextInput type="number" step="1" value={form.pickup_discount_pct ?? 0}
+                       onChange={e => set({ pickup_discount_pct: Number(e.target.value) })} />
+          </Field>
+          <Field label="Χρόνος ετοιμασίας (λεπτά)">
+            <TextInput type="number" value={form.prep_time_min ?? 20}
+                       onChange={e => set({ prep_time_min: Number(e.target.value) })} />
+          </Field>
+          <Field label="Μέσος χρόνος παράδοσης (λεπτά)">
+            <TextInput type="number" value={form.avg_delivery_time ?? 30}
+                       onChange={e => set({ avg_delivery_time: Number(e.target.value) })} />
+          </Field>
+        </div>
+        <div className="grid md:grid-cols-2 gap-x-6 mt-1">
+          <CheckRow label="Δέχεται μετρητά" checked={form.accepts_cash ?? true}
+                    onChange={v => set({ accepts_cash: v })} />
+          <CheckRow label="Αυτόματη αποδοχή παραγγελιών"
+                    hint="Οι παραγγελίες επιβεβαιώνονται χωρίς ενέργεια από εσάς"
+                    checked={form.auto_accept ?? false} onChange={v => set({ auto_accept: v })} />
+        </div>
+      </Card>
 
-      <Section title="Ειδοποιήσεις">
-        {[
-          { label:'Νέα παραγγελία (sound)', val:true },
-          { label:'Ειδοποίηση SMS', val:false },
-          { label:'Email για κάθε παραγγελία', val:false },
-          { label:'Ημερήσια αναφορά email', val:true },
-        ].map(item => (
-          <div key={item.label} className="flex items-center justify-between">
-            <span className="text-sm font-medium">{item.label}</span>
-            <Toggle checked={item.val} onChange={() => {}} />
-          </div>
-        ))}
-      </Section>
+      <Card title="Ώρες λειτουργίας">
+        <div className="space-y-2">
+          {hours.map((h, i) => (
+            <div key={h.day_of_week} className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-semibold w-24">{DAYS[h.day_of_week]}</span>
+              <input type="time" className="input-field max-w-[130px]" disabled={h.is_closed}
+                     value={h.open_time?.slice(0, 5) ?? '09:00'}
+                     onChange={e => setHours(prev => prev.map((x, xi) => xi === i ? { ...x, open_time: e.target.value } : x))} />
+              <span className="text-ink-3">—</span>
+              <input type="time" className="input-field max-w-[130px]" disabled={h.is_closed}
+                     value={h.close_time?.slice(0, 5) ?? '23:00'}
+                     onChange={e => setHours(prev => prev.map((x, xi) => xi === i ? { ...x, close_time: e.target.value } : x))} />
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" className="accent-brand w-4 h-4" checked={h.is_closed}
+                       onChange={e => setHours(prev => prev.map((x, xi) => xi === i ? { ...x, is_closed: e.target.checked } : x))} />
+                Κλειστά
+              </label>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-ink-3 mt-3">
+          Εκτός ωραρίου το κατάστημα εμφανίζεται ως κλειστό και δεν δέχεται παραγγελίες.
+        </p>
+      </Card>
 
-      {/* Save button */}
-      <div className="fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto px-5 py-4 bg-surface-1 border-t border-surface-4">
-        <button className="btn btn-primary btn-lg" onClick={handleSave} disabled={saving}>
-          {saving ? 'Αποθήκευση...' : '✓ Αποθήκευση αλλαγών'}
+      <Card title="Ζώνες παράδοσης">
+        {(zonesQ.data ?? []).length === 0 ? (
+          <p className="text-sm text-ink-3">
+            Δεν έχουν οριστεί ζώνες — χρησιμοποιείται η ακτίνα των {form.delivery_radius_km} km.
+            Οι ζώνες ορίζονται από τον διαχειριστή της πλατφόρμας.
+          </p>
+        ) : (
+          <table className="dash-table">
+            <thead><tr><th>Ζώνη</th><th>Περιοχή</th><th>Τ.Κ.</th><th>Μεταφορικά</th><th>Ελάχιστο</th></tr></thead>
+            <tbody>
+              {(zonesQ.data ?? []).map(z => (
+                <tr key={z.id}>
+                  <td className="font-semibold">{z.name}</td>
+                  <td>{z.area ?? '—'}</td>
+                  <td>{z.postal_code ?? '—'}</td>
+                  <td>{money(z.delivery_fee)}</td>
+                  <td>{money(z.min_order)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
+
+      <div className="flex justify-end pb-6">
+        <button className="btn btn-primary btn-lg" disabled={saving} onClick={save}>
+          {saving ? 'Αποθήκευση…' : 'Αποθήκευση αλλαγών'}
         </button>
       </div>
     </div>

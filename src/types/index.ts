@@ -15,10 +15,14 @@ export type PaymentMethod = 'card' | 'cash' | 'apple_pay' | 'google_pay' | 'wall
 export type PaymentStatus = 'pending' | 'paid' | 'refunded' | 'failed'
 
 // ─── Profile ────────────────────────────────────────────────
+export type UserRole = 'customer' | 'store' | 'driver' | 'admin'
+
 export interface Profile {
   id: string
   full_name: string
   phone: string | null
+  email: string | null
+  role: UserRole
   avatar_url: string | null
   loyalty_points: number
   is_active: boolean

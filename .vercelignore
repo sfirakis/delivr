@@ -1,0 +1,9 @@
+node_modules
+dist
+e2e
+docs
+supabase
+*.log
+delivr-landing.html
+delivr-landing-v2.html
+delivr-deploy-guide.html
