@@ -6,7 +6,7 @@ import {
   getPropertyByCode, getPublicSettings, getStoresForProperty,
   placeOrder, notifyOrder, ApiError,
 } from '@/lib/api'
-import { money } from '@/lib/format'
+import { money, num, fullAddress } from '@/lib/format'
 import { useI18n, type TKey } from '@/lib/i18n'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
@@ -139,7 +139,9 @@ export default function GuestCheckoutPage() {
           {service === 'delivery' ? (
             <>
               <p className="font-bold text-sm text-ink-1">{property?.name}</p>
-              <p className="text-sm text-ink-2">{property?.address}</p>
+              <p className="text-sm text-ink-2">
+                {fullAddress(property?.address, property?.area, property?.city, property?.postal_code)}
+              </p>
               {(property?.floor || property?.doorbell) && (
                 <p className="text-xs text-ink-3 mt-0.5">
                   {property?.floor && `${property.floor} · `}{property?.doorbell}

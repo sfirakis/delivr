@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { storeAction, getStoreOrder, type StoreOrderView } from '@/lib/api'
-import { money, dateTime, relativeMinutes, phoneE164, num } from '@/lib/format'
+import { money, dateTime, relativeMinutes, phoneE164, num, fullAddress } from '@/lib/format'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatusChip } from '@/admin/ui'
 import PrintTicket from '@/storefront/PrintTicket'
@@ -115,7 +115,7 @@ function OrderCard({ order, onAction, busy, onPrint }: {
       {order.delivery_type === 'delivery' && (addr || order.properties) && (
         <div className="bg-surface-2 rounded-xl p-2.5 mb-2 text-xs">
           <p className="font-bold">{order.properties?.name ?? addr?.label}</p>
-          <p className="text-ink-2">{addr?.street ?? ''}</p>
+          <p className="text-ink-2">{fullAddress(addr?.street, addr?.area, addr?.city)}</p>
           {(addr?.floor || addr?.doorbell) && (
             <p className="text-ink-3">{[addr?.floor, addr?.doorbell].filter(Boolean).join(' · ')}</p>
           )}

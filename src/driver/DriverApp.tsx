@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { money, dateTime, relativeMinutes, phoneE164, num } from '@/lib/format'
+import { money, dateTime, relativeMinutes, phoneE164, num, fullAddress } from '@/lib/format'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatCard, StatusChip, Tabs } from '@/admin/ui'
 
@@ -41,7 +41,7 @@ function OrderCard({ order, onAction, busy }: {
   order: DriverOrder; busy: boolean; onAction: (patch: Record<string, unknown>) => void
 }) {
   const addr = order.delivery_address
-  const dest = order.properties?.address ?? addr?.street ?? ''
+  const dest = fullAddress(order.properties?.address ?? addr?.street, addr?.area, addr?.city)
   const mine = !!order.driver_id
 
   return (
