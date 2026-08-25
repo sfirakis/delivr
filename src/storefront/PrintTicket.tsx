@@ -1,5 +1,5 @@
 import type { StoreOrderView } from '@/lib/api'
-import { money, dateTime } from '@/lib/format'
+import { money, dateTime, fullAddress } from '@/lib/format'
 import type { Lang } from '@/lib/i18n'
 
 /**
@@ -37,7 +37,8 @@ export default function PrintTicket({ order, lang = 'el' }: { order: StoreOrderV
           <div className="pt-sep" />
           <div className="pt-bold">{el ? 'ΔΙΕΥΘΥΝΣΗ' : 'ADDRESS'}</div>
           {order.property?.name && <div>{order.property.name}</div>}
-          <div>{addr?.street ?? order.property?.address}</div>
+          <div>{fullAddress(addr?.street ?? order.property?.address, order.property?.area,
+                             order.property?.city, addr?.postal_code)}</div>
           {(addr?.floor || addr?.doorbell) && (
             <div>{[addr?.floor, addr?.doorbell].filter(Boolean).join(' · ')}</div>
           )}

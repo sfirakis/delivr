@@ -10,7 +10,7 @@ const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f06
 
 const PROPERTY = {
   id: 'a584d0bf-21b1-4816-9592-6f413da17ac0', code: 'AEGEAN1', name: 'Villa Aegean Blue',
-  type: 'villa', address: 'Οδός Σχίσμα 14, Ελούντα', city: 'Ελούντα', area: 'Ελούντα',
+  type: 'villa', address: 'Οδός Σχίσμα 14', city: 'Ελούντα', area: 'Ελούντα',
   postal_code: '72053', lat: 35.26, lng: 25.722, floor: null, doorbell: 'Aegean Blue',
   access_notes: 'Λευκή πύλη στα δεξιά μετά το ξενοδοχείο.',
   welcome_message: 'Καλώς ήρθατε στη Villa Aegean Blue!', cover_url: null, default_language: 'el',
@@ -167,6 +167,11 @@ await step('QR landing shows the property and the stores that serve it', async (
   const body = await page.locator('body').innerText()
   if (!body.includes('Ελούντα')) throw new Error('address missing')
   if (!body.includes('3,50') && !body.includes('3.50')) throw new Error('zone delivery fee not shown')
+
+  // The address line must name the area once, however the street was typed.
+  const line = await page.getByText('Οδός Σχίσμα 14').first().innerText()
+  const mentions = (line.match(/Ελούντα/g) ?? []).length
+  if (mentions !== 1) throw new Error(`area repeated ${mentions}× in "${line}"`)
 })
 await shot(`${OUT}/01-qr-home.png`)
 

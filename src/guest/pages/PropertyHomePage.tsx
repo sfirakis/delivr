@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getPropertyByCode, getStoresForProperty, logScan, type MatchedStore, type ServiceType } from '@/lib/api'
-import { money, num } from '@/lib/format'
+import { money, num, fullAddress } from '@/lib/format'
 import { useI18n, LangToggle } from '@/lib/i18n'
 import { useGuestCart } from '@/guest/guestCart'
 import { Spinner, EmptyState, StarRating } from '@/components/ui'
@@ -132,7 +132,7 @@ export default function PropertyHomePage() {
             </p>
             <p className="font-display font-black text-lg text-ink-1 truncate">{property.name}</p>
             <p className="text-xs text-ink-2 truncate">
-              📍 {property.address}{property.area ? `, ${property.area}` : ''}
+              📍 {fullAddress(property.address, property.area, property.city)}
             </p>
           </div>
           <LangToggle className="flex-shrink-0 mt-1" />
