@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useLocation } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Spinner } from '@/components/ui'
 import toast from 'react-hot-toast'
@@ -12,7 +12,8 @@ export default function AuthPage() {
   const { signIn, signUp, signInWithGoogle } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = (location.state as any)?.from?.pathname ?? '/home'
+  // /home belonged to the retired customer app; partners land on their dashboard.
+  const from = (location.state as any)?.from?.pathname ?? '/merchant'
 
   const update = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }))
@@ -119,8 +120,14 @@ export default function AuthPage() {
 
         <p className="text-xs text-ink-3 text-center pb-4">
           Με τη σύνδεση αποδέχεσαι τους{' '}
-          <span className="text-brand">Όρους Χρήσης</span> και την{' '}
-          <span className="text-brand">Πολιτική Απορρήτου</span>
+          <Link to="/terms" className="text-brand underline underline-offset-2">
+            Όρους Χρήσης &amp; την Πολιτική Απορρήτου
+          </Link>
+          <br />
+          <span className="text-[11px]">
+            By signing in you accept the{' '}
+            <Link to="/terms" className="text-brand underline underline-offset-2">Terms &amp; Privacy Policy</Link>
+          </span>
         </p>
       </div>
     </div>

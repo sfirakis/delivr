@@ -1,0 +1,9 @@
+# Delivr — only the guest-facing pages are worth indexing.
+User-agent: *
+Allow: /qr
+Allow: /t
+Allow: /s
+Disallow: /admin
+Disallow: /merchant
+Disallow: /driver
+Disallow: /auth

@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { money, dateTime, relativeMinutes, phoneDigits, num } from '@/lib/format'
+import { money, dateTime, relativeMinutes, phoneE164, num } from '@/lib/format'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatCard, StatusChip, Tabs } from '@/admin/ui'
 
@@ -76,7 +76,7 @@ function OrderCard({ order, onAction, busy }: {
                href={mapsHref(order.stores?.lat, order.stores?.lng, order.stores?.address ?? '')}
                target="_blank" rel="noopener noreferrer">🗺️ Πλοήγηση</a>
             {order.stores?.phone && (
-              <a className="btn btn-secondary btn-sm" href={`tel:${phoneDigits(order.stores.phone)}`}>📞</a>
+              <a className="btn btn-secondary btn-sm" href={`tel:${phoneE164(order.stores.phone)}`}>📞</a>
             )}
           </div>
         </div>
@@ -96,7 +96,7 @@ function OrderCard({ order, onAction, busy }: {
                href={mapsHref(order.properties?.lat, order.properties?.lng, dest)}
                target="_blank" rel="noopener noreferrer">🗺️ Πλοήγηση</a>
             {order.guest_phone && (
-              <a className="btn btn-secondary btn-sm" href={`tel:${phoneDigits(order.guest_phone)}`}>📞</a>
+              <a className="btn btn-secondary btn-sm" href={`tel:${phoneE164(order.guest_phone)}`}>📞</a>
             )}
           </div>
         </div>

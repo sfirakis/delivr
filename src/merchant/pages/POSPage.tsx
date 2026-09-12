@@ -3,7 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { storeAction, getStoreOrder, type StoreOrderView } from '@/lib/api'
-import { money, dateTime, relativeMinutes, phoneDigits, num } from '@/lib/format'
+import { money, dateTime, relativeMinutes, phoneE164, num } from '@/lib/format'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatusChip } from '@/admin/ui'
 import PrintTicket from '@/storefront/PrintTicket'
@@ -196,7 +196,7 @@ function OrderCard({ order, onAction, busy, onPrint }: {
           🖨️ Εκτύπωση{order.printed_at ? ' ✓' : ''}
         </button>
         {order.guest_phone && (
-          <a className="btn btn-secondary btn-sm" href={`tel:${phoneDigits(order.guest_phone)}`}>📞</a>
+          <a className="btn btn-secondary btn-sm" href={`tel:${phoneE164(order.guest_phone)}`}>📞</a>
         )}
         {order.delivery_type === 'delivery' && (order.properties?.lat || addr?.street) && (
           <a className="btn btn-secondary btn-sm" target="_blank" rel="noopener noreferrer"

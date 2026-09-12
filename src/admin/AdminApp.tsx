@@ -38,8 +38,8 @@ export default function AdminApp() {
             update profiles set role = 'admin' where id = '{profile.id}';
           </code>
         </p>
-        <button className="btn btn-secondary btn-md mt-5" onClick={() => navigate('/home')}>
-          Επιστροφή στην εφαρμογή
+        <button className="btn btn-secondary btn-md mt-5" onClick={() => navigate('/')}>
+          Επιστροφή στην αρχική
         </button>
       </div>
     )
@@ -69,7 +69,7 @@ export default function AdminApp() {
         </div>
         <div className="flex items-center gap-2">
           <LangToggle />
-          <button className="btn btn-secondary btn-md" onClick={() => navigate('/home')}>Εφαρμογή</button>
+          <button className="btn btn-secondary btn-md" onClick={() => navigate('/')}>Αρχική</button>
           <button className="btn btn-ghost btn-md" onClick={() => { void signOut(); navigate('/auth') }}>
             Έξοδος
           </button>

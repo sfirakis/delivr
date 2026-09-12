@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import {
   getPropertyByCode, getPublicSettings, getStoresForProperty,
   placeOrder, notifyOrder, ApiError,
 } from '@/lib/api'
-import { money, num } from '@/lib/format'
+import { money } from '@/lib/format'
 import { useI18n, type TKey } from '@/lib/i18n'
-import { useGuestCart } from '@/guest/guestCart'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { Spinner } from '@/components/ui'
 
 const GUEST_KEY = 'delivr_guest_details'
@@ -23,6 +24,8 @@ export default function GuestCheckoutPage() {
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
   const [notes, setNotes] = useState('')
+  const [promo, setPromo] = useState('')
+  const [promoError, setPromoError] = useState<string | null>(null)
   const [payment] = useState<'cash'>('cash')
   const [scheduleLater, setScheduleLater] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
@@ -57,18 +60,14 @@ export default function GuestCheckoutPage() {
   const property = propertyQ.data
   const settings = settingsQ.data
 
-  const sub = subtotal()
-  const takeawayPct = service === 'pickup' ? num(store?.pickup_discount_pct) : 0
-  const discount = takeawayPct > 0 ? +(sub * takeawayPct / 100).toFixed(2) : 0
-  const freeAbove = store?.free_above != null ? num(store.free_above) : null
-  const fee = service === 'delivery'
-    ? (freeAbove !== null && sub >= freeAbove ? 0 : num(store?.delivery_fee))
-    : 0
-  const total = +(sub - discount + fee).toFixed(2)
+  useDocumentTitle(t('checkout.title'))
+
+  const { subtotal: sub, discount, fee, total } = cartTotals(subtotal(), store, service)
 
   async function submit() {
     if (!storeId) return
     setSubmitting(true)
+    setPromoError(null)
     try {
       const result = await placeOrder({
         code,
@@ -86,6 +85,7 @@ export default function GuestCheckoutPage() {
           email: email.trim() || null,
           notes: notes.trim() || null,
         },
+        promo: promo.trim().toUpperCase() || null,
         scheduledFor: scheduleLater && scheduledAt ? new Date(scheduledAt).toISOString() : null,
         payment,
         channel: 'qr',
@@ -105,7 +105,11 @@ export default function GuestCheckoutPage() {
       const e = err as ApiError
       const key = `err.${e.code}` as TKey
       const msg = t(key)
-      toast.error(msg.startsWith('err.') ? t('err.generic') : msg)
+      const readable = msg.startsWith('err.') ? t('err.generic') : msg
+      // A rejected promo code should point at the field, not just flash a toast:
+      // the guest can still send the order without it.
+      if (e.code.startsWith('PROMO')) setPromoError(readable)
+      toast.error(readable)
       setSubmitting(false)
     }
   }
@@ -222,6 +226,47 @@ export default function GuestCheckoutPage() {
           )}
         </div>
 
+        {/* Promo code */}
+        <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4">
+          <label className="input-label" htmlFor="g-promo">{t('checkout.promo')}</label>
+          <input
+            id="g-promo"
+            className="input-field uppercase"
+            value={promo}
+            autoCapitalize="characters"
+            autoComplete="off"
+            maxLength={32}
+            placeholder={t('checkout.promoPh')}
+            onChange={e => { setPromo(e.target.value); setPromoError(null) }}
+          />
+          <p className={`text-[11px] mt-1 ${promoError ? 'text-danger' : 'text-ink-3'}`}>
+            {promoError ?? t('checkout.promoHint')}
+          </p>
+        </div>
+
+        {/* What is being ordered — the last chance to spot a mistake */}
+        <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4 space-y-2">
+          <p className="text-[11px] uppercase tracking-wide text-ink-3 font-semibold">
+            {t('checkout.items')}
+          </p>
+          {lines.map(line => (
+            <div key={line.lineId} className="flex justify-between gap-2 text-sm">
+              <div className="min-w-0">
+                <p className="text-ink-1">
+                  <span className="font-bold">{line.quantity}×</span> {line.name}
+                </p>
+                {line.modifiers.length > 0 && (
+                  <p className="text-[11px] text-ink-3">+ {line.modifiers.map(m => m.name).join(', ')}</p>
+                )}
+                {line.notes && <p className="text-[11px] text-ink-3 italic">✏️ {line.notes}</p>}
+              </div>
+              <span className="font-semibold whitespace-nowrap">
+                {money(line.unitPrice * line.quantity, lang)}
+              </span>
+            </div>
+          ))}
+        </div>
+
         {/* Totals */}
         <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4 space-y-2 text-sm">
           <div className="flex justify-between">
@@ -247,7 +292,10 @@ export default function GuestCheckoutPage() {
           </div>
         </div>
 
-        <p className="text-[11px] text-ink-3 px-1">{t('checkout.terms')}</p>
+        <p className="text-[11px] text-ink-3 px-1">
+          {t('checkout.terms')}{' '}
+          <Link to="/terms" className="text-brand underline underline-offset-2">{t('terms.link')}</Link>
+        </p>
       </div>
 
       <div className="flex-shrink-0 p-3 border-t border-surface-4 bg-surface-1">

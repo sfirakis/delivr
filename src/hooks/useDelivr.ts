@@ -168,63 +168,9 @@ export function useOrderRealtime(orderId: string, onUpdate?: (order: Order) => v
   }, [orderId, qc, onUpdate])
 }
 
-// ─── Create Order ─────────────────────────────────────────────
-interface CreateOrderPayload {
-  store_id: string
-  delivery_type: 'delivery' | 'pickup'
-  delivery_address?: object
-  delivery_notes?: string
-  items: {
-    menu_item_id: string
-    name: string
-    price: number
-    quantity: number
-    modifiers: { name: string; price: number }[]
-    notes?: string
-    subtotal: number
-  }[]
-  subtotal: number
-  delivery_fee: number
-  discount_amount: number
-  total: number
-  payment_method: string
-  promo_code?: string
-  customer_notes?: string
-  points_used?: number
-}
-
-export function useCreateOrder() {
-  const qc = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ userId, payload }: { userId: string; payload: CreateOrderPayload }) => {
-      // 1. Create order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          user_id: userId,
-          ...payload,
-          points_earned: Math.floor(payload.total),
-        })
-        .select()
-        .single()
-
-      if (orderError) throw orderError
-
-      // 2. Create order items
-      const { error: itemsError } = await supabase
-        .from('order_items')
-        .insert(payload.items.map((item) => ({ ...item, order_id: order.id })))
-
-      if (itemsError) throw itemsError
-
-      return order as Order
-    },
-    onSuccess: (order) => {
-      qc.invalidateQueries({ queryKey: QK.orders(order.user_id) })
-    },
-  })
-}
+// Order creation lives server-side: the guest flow calls the delivr_place_order
+// RPC (see src/lib/api.ts). Clients have no INSERT rights on orders/order_items,
+// so the old direct-insert useCreateOrder hook could only ever fail.
 
 // ─── Favorites ───────────────────────────────────────────────
 export function useFavorites(userId: string) {

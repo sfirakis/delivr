@@ -4,7 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { getStoreMenu, getStoresForProperty, type PublicMenuItem } from '@/lib/api'
 import { money, num } from '@/lib/format'
 import { useI18n } from '@/lib/i18n'
-import { useGuestCart } from '@/guest/guestCart'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import { useGuestCart, cartTotals } from '@/guest/guestCart'
+import { CartBar, CartProgress } from '@/guest/CartWidgets'
 import { Spinner, EmptyState, QtyStepper } from '@/components/ui'
 
 // ── Item detail sheet ────────────────────────────────────────
@@ -117,7 +119,7 @@ export default function GuestStorePage() {
   const { code = '', storeId = '' } = useParams()
   const navigate = useNavigate()
   const { t, lang } = useI18n()
-  const { service, count, storeId: cartStoreId } = useGuestCart()
+  const { service, count, subtotal, storeId: cartStoreId } = useGuestCart()
   const [openItem, setOpenItem] = useState<PublicMenuItem | null>(null)
   const [activeCat, setActiveCat] = useState<string | null>(null)
 
@@ -132,10 +134,16 @@ export default function GuestStorePage() {
 
   const store = storesQ.data?.find(s => s.store_id === storeId)
   const cartCount = count()
+  // The cart may still belong to another store (it is reset on the next add);
+  // price it against whichever store it actually holds.
+  const cartStore = storesQ.data?.find(s => s.store_id === cartStoreId)
+  const totals = cartTotals(subtotal(), cartStore, service)
+
+  useDocumentTitle(store?.store_name ?? null)
 
   const grouped = useMemo(() => {
     const cats = menuQ.data?.categories ?? []
-    const items = (menuQ.data?.items ?? []).filter(i => i.is_available || true)
+    const items = menuQ.data?.items ?? []
     const out = cats.map(c => ({ cat: c, items: items.filter(i => i.category_id === c.id) }))
     const uncategorised = items.filter(i => !i.category_id)
     if (uncategorised.length) {
@@ -241,13 +249,13 @@ export default function GuestStorePage() {
         ))}
       </div>
 
-      {/* Cart bar */}
+      {/* Cart bar + what is still worth adding */}
       {cartCount > 0 && (
-        <div className="flex-shrink-0 p-3 border-t border-surface-4 bg-surface-1">
-          <button className="btn btn-primary btn-lg w-full" onClick={() => navigate(`/qr/${code}/cart`)}>
-            🛒 {t('cart.title')} · {cartCount}
-            {cartStoreId !== storeId && cartStoreId !== null && ' ⚠️'}
-          </button>
+        <div className="flex-shrink-0 bg-surface-1">
+          {cartStoreId === storeId && (
+            <CartProgress totals={totals} service={service} className="px-3 pt-3 border-t border-surface-4" />
+          )}
+          <CartBar count={cartCount} total={totals.total} onOpen={() => navigate(`/qr/${code}/cart`)} />
         </div>
       )}
 

@@ -1,9 +1,11 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getStoresForProperty } from '@/lib/api'
-import { money, num } from '@/lib/format'
+import { money } from '@/lib/format'
 import { useI18n } from '@/lib/i18n'
-import { useGuestCart } from '@/guest/guestCart'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import { useGuestCart, cartTotals } from '@/guest/guestCart'
+import { CartProgress } from '@/guest/CartWidgets'
 import { EmptyState, QtyStepper } from '@/components/ui'
 
 export default function GuestCartPage() {
@@ -17,17 +19,11 @@ export default function GuestCartPage() {
     queryFn: () => getStoresForProperty(code, service),
   })
 
+  useDocumentTitle(t('cart.title'))
+
   const store = storesQ.data?.find(s => s.store_id === storeId)
-  const sub = subtotal()
-  const minOrder = num(store?.min_order)
-  const missing = Math.max(0, minOrder - sub)
-  const takeawayPct = service === 'pickup' ? num(store?.pickup_discount_pct) : 0
-  const discount = takeawayPct > 0 ? +(sub * takeawayPct / 100).toFixed(2) : 0
-  const freeAbove = store?.free_above != null ? num(store.free_above) : null
-  const fee = service === 'delivery'
-    ? (freeAbove !== null && sub >= freeAbove ? 0 : num(store?.delivery_fee))
-    : 0
-  const total = +(sub - discount + fee).toFixed(2)
+  const totals = cartTotals(subtotal(), store, service)
+  const { subtotal: sub, discountPct: takeawayPct, discount, fee, total, missingToMin: missing } = totals
 
   if (lines.length === 0) {
     return (
@@ -109,11 +105,7 @@ export default function GuestCartPage() {
           </div>
         </div>
 
-        {missing > 0 && (
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
-            ⚠️ {t('cart.minOrderWarn', { amount: money(minOrder, lang), missing: money(missing, lang) })}
-          </p>
-        )}
+        <CartProgress totals={totals} service={service} />
       </div>
 
       <div className="flex-shrink-0 p-3 border-t border-surface-4 bg-surface-1">
