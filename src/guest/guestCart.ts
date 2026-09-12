@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { PublicMenuItem } from '@/lib/api'
+import { num } from '@/lib/format'
+import type { MatchedStore, PublicMenuItem, ServiceType } from '@/lib/api'
 
 export interface GuestCartLine {
   lineId: string
@@ -93,3 +94,54 @@ export const useGuestCart = create<GuestCartState>()(
     { name: 'delivr_guest_cart' },
   ),
 )
+
+// ── Totals ───────────────────────────────────────────────────
+// These numbers are for display only — delivr_place_order prices the order
+// again server-side, and its result is what the guest is charged.
+
+export interface CartTotals {
+  subtotal: number
+  discountPct: number
+  discount: number
+  fee: number
+  total: number
+  /** Minimum order for this store, 0 when it has none. */
+  minOrder: number
+  /** How much is still missing before the order can be sent. */
+  missingToMin: number
+  /** Order value above which delivery is free, null when the store has no such offer. */
+  freeAbove: number | null
+  /** How much is still missing before delivery becomes free. */
+  missingToFree: number
+  freeDelivery: boolean
+}
+
+/** One place that turns a cart subtotal plus the store's terms into what the guest owes. */
+export function cartTotals(
+  subtotal: number,
+  store: MatchedStore | undefined,
+  service: ServiceType,
+): CartTotals {
+  const sub = +subtotal.toFixed(2)
+  const discountPct = service === 'pickup' ? num(store?.pickup_discount_pct) : 0
+  const discount = discountPct > 0 ? +(sub * discountPct / 100).toFixed(2) : 0
+
+  const freeAbove = store?.free_above != null && num(store.free_above) > 0 ? num(store.free_above) : null
+  const freeDelivery = service === 'delivery' && freeAbove !== null && sub >= freeAbove
+  const fee = service === 'delivery' && !freeDelivery ? num(store?.delivery_fee) : 0
+
+  const minOrder = num(store?.min_order)
+
+  return {
+    subtotal: sub,
+    discountPct,
+    discount,
+    fee,
+    total: +(sub - discount + fee).toFixed(2),
+    minOrder,
+    missingToMin: +Math.max(0, minOrder - sub).toFixed(2),
+    freeAbove,
+    missingToFree: freeAbove === null ? 0 : +Math.max(0, freeAbove - sub).toFixed(2),
+    freeDelivery,
+  }
+}

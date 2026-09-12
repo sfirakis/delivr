@@ -40,8 +40,8 @@ export default function MerchantApp() {
         <p className="text-xs text-ink-3 mt-3">
           Λογαριασμός: <code>{profile?.id}</code>
         </p>
-        <button className="btn btn-secondary btn-md mt-5" onClick={() => navigate('/home')}>
-          Επιστροφή στην εφαρμογή
+        <button className="btn btn-secondary btn-md mt-5" onClick={() => navigate('/')}>
+          Επιστροφή στην αρχική
         </button>
       </div>
     )

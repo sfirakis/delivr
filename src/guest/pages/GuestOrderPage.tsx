@@ -3,8 +3,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { getOrderStatus } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
-import { money, time, minutesUntil, phoneDigits } from '@/lib/format'
+import { money, time, minutesUntil, phoneE164 } from '@/lib/format'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { buildWhatsAppMessage, waLink } from '@/lib/whatsapp'
 import { Spinner, EmptyState } from '@/components/ui'
 
@@ -44,7 +45,9 @@ export default function GuestOrderPage() {
 
   const order = orderQ.data
 
-  const waHref = useMemo(() => {
+  useDocumentTitle(order ? `${order.store.name} · ${order.order_number}` : null)
+
+  const waMessageHref = useMemo(() => {
     if (!order) return null
     const addr = order.delivery_address as Record<string, string> | null
     const msg = buildWhatsAppMessage({
@@ -140,10 +143,10 @@ export default function GuestOrderPage() {
         )}
 
         {/* WhatsApp nudge while the store has not answered yet */}
-        {order.status === 'pending' && waHref && (
+        {order.status === 'pending' && waMessageHref && (
           <div className="bg-green-50 border border-green-200 rounded-2xl p-4">
             <p className="text-xs text-green-900 mb-2">{t('order.whatsappHint')}</p>
-            <a href={waHref} target="_blank" rel="noopener noreferrer"
+            <a href={waMessageHref} target="_blank" rel="noopener noreferrer"
                className="btn btn-lg w-full bg-[#25D366] text-white">
               💬 {t('order.sendWhatsapp')}
             </a>
@@ -155,7 +158,7 @@ export default function GuestOrderPage() {
           <p className="font-display font-bold text-base">{order.store.name}</p>
           <p className="text-xs text-ink-2">{order.store.address}</p>
           {order.store.phone && (
-            <a href={`tel:${phoneDigits(order.store.phone)}`}
+            <a href={`tel:${phoneE164(order.store.phone)}`}
                className="btn btn-secondary btn-md w-full mt-3">
               📞 {t('order.callStore')}
             </a>

@@ -1,6 +1,6 @@
 import { money } from './format'
 import type { Lang } from './i18n'
-import { phoneDigits } from './format'
+import { waHref } from './format'
 
 export interface WaOrderLine { name: string; quantity: number; subtotal: number | string; modifiers?: { name: string }[]; notes?: string | null }
 
@@ -75,7 +75,5 @@ export function buildWhatsAppMessage(p: WaOrderPayload, lang: Lang = 'el'): stri
 
 /** wa.me deep link — opens WhatsApp with the message pre-filled. */
 export function waLink(phone: string | null | undefined, message: string): string | null {
-  const digits = phoneDigits(phone)
-  if (digits.length < 8) return null
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+  return waHref(phone, message) ?? null
 }

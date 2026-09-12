@@ -1,7 +1,7 @@
 {
-  "name": "Delivr — Φαγητό & Market",
+  "name": "Delivr — Παράγγειλε στο κατάλυμά σου",
   "short_name": "Delivr",
-  "description": "Φαγητό, καφέ και market στην πόρτα σου",
+  "description": "Σκάναρε το QR του καταλύματός σου και παράγγειλε από τοπικά καταστήματα.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -10,30 +10,7 @@
   "categories": ["food", "shopping", "lifestyle"],
   "lang": "el",
   "icons": [
-    { "src": "/icon-72.png",   "sizes": "72x72",   "type": "image/png", "purpose": "any" },
-    { "src": "/icon-96.png",   "sizes": "96x96",   "type": "image/png", "purpose": "any" },
-    { "src": "/icon-128.png",  "sizes": "128x128", "type": "image/png", "purpose": "any" },
-    { "src": "/icon-192.png",  "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-    { "src": "/icon-512.png",  "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-  ],
-  "screenshots": [
-    { "src": "/screenshot-home.png",  "sizes": "390x844", "type": "image/png", "form_factor": "narrow",  "label": "Αρχική" },
-    { "src": "/screenshot-store.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow",  "label": "Κατάστημα" },
-    { "src": "/screenshot-track.png", "sizes": "390x844", "type": "image/png", "form_factor": "narrow",  "label": "Tracking" }
-  ],
-  "shortcuts": [
-    {
-      "name": "Αναζήτηση φαγητού",
-      "short_name": "Φαγητό",
-      "url": "/home?cat=restaurant",
-      "icons": [{ "src": "/shortcut-food.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Παρακολούθηση παραγγελίας",
-      "short_name": "Tracking",
-      "url": "/orders",
-      "icons": [{ "src": "/shortcut-track.png", "sizes": "96x96" }]
-    }
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ],
   "prefer_related_applications": false
 }

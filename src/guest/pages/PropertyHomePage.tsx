@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { getPropertyByCode, getStoresForProperty, logScan, type MatchedStore, type ServiceType } from '@/lib/api'
-import { money, num } from '@/lib/format'
+import {
+  getPropertyByCode, getPublicSettings, getStoresForProperty, logScan,
+  type MatchedStore, type ServiceType,
+} from '@/lib/api'
+import { money, num, telHref, waHref } from '@/lib/format'
 import { useI18n, LangToggle } from '@/lib/i18n'
-import { useGuestCart } from '@/guest/guestCart'
+import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import { useGuestCart, cartTotals } from '@/guest/guestCart'
+import { CartBar } from '@/guest/CartWidgets'
 import { Spinner, EmptyState, StarRating } from '@/components/ui'
 
 const CATEGORY_EMOJI: Record<string, string> = {
@@ -69,7 +74,7 @@ export default function PropertyHomePage() {
   const { code = '' } = useParams()
   const navigate = useNavigate()
   const { t, setLang } = useI18n()
-  const { service, setService, setContext, count } = useGuestCart()
+  const { service, setService, setContext, count, storeId, subtotal } = useGuestCart()
   const [search, setSearch] = useState('')
 
   const propertyQ = useQuery({
@@ -83,6 +88,11 @@ export default function PropertyHomePage() {
     queryFn: () => getStoresForProperty(code, service),
     enabled: !!propertyQ.data,
   })
+
+  // Only needed for the support details on the wrong-QR screen.
+  const settingsQ = useQuery({ queryKey: ['public-settings'], queryFn: getPublicSettings })
+
+  useDocumentTitle(propertyQ.data?.name ?? null)
 
   // Adopt the property's preferred language the first time we land here.
   useEffect(() => {
@@ -110,16 +120,55 @@ export default function PropertyHomePage() {
     return <div className="h-full flex items-center justify-center"><Spinner size={32} /></div>
   }
 
+  // Wrong or retired QR code: the guest is stuck and needs a human, plus a way
+  // to read this screen in their own language.
   if (propertyQ.isError) {
+    const s = settingsQ.data
+    const tel = telHref(s?.support_phone)
+    const wa = waHref(s?.support_whatsapp ?? s?.support_phone)
+    const hasSupport = !!(tel || wa || s?.support_email)
+
     return (
-      <div className="h-full flex items-center justify-center px-6">
-        <EmptyState emoji="🔍" title={t('guest.propertyNotFound')} subtitle={code} />
+      <div className="h-full flex flex-col bg-surface-2">
+        <div className="flex justify-end px-4 py-3 flex-shrink-0">
+          <LangToggle />
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 flex flex-col items-center justify-center">
+          <EmptyState emoji="🔍" title={t('guest.propertyNotFound')} subtitle={code} />
+
+          {hasSupport && (
+            <div className="w-full max-w-[320px] mt-6 bg-surface-1 border border-surface-4 rounded-2xl p-4">
+              <p className="font-bold text-sm text-ink-1">{t('guest.needHelp')}</p>
+              <p className="text-xs text-ink-2 mt-0.5">{t('guest.helpHint')}</p>
+              <div className="flex flex-col gap-2 mt-3">
+                {tel && (
+                  <a href={tel} className="btn btn-secondary btn-md w-full">
+                    📞 {t('guest.callSupport')} · {s?.support_phone}
+                  </a>
+                )}
+                {wa && (
+                  <a href={wa} target="_blank" rel="noopener noreferrer"
+                     className="btn btn-md w-full bg-[#25D366] text-white">
+                    💬 {t('guest.whatsappSupport')}
+                  </a>
+                )}
+                {s?.support_email && (
+                  <a href={`mailto:${s.support_email}`} className="btn btn-secondary btn-md w-full">
+                    ✉️ {t('guest.emailSupport')}
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     )
   }
 
   const property = propertyQ.data!
   const cartCount = count()
+  const cartStore = storesQ.data?.find(st => st.store_id === storeId)
+  const totals = cartTotals(subtotal(), cartStore, service)
 
   return (
     <div className="h-full flex flex-col bg-surface-2">
@@ -127,12 +176,15 @@ export default function PropertyHomePage() {
       <div className="bg-surface-1 px-5 pt-5 pb-3 border-b border-surface-4 flex-shrink-0">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
+            {/* In take away mode nothing is delivered anywhere — saying
+                "delivering to <property>" would be a plain lie. */}
             <p className="text-[11px] uppercase tracking-wide text-ink-3 font-semibold">
-              {t('guest.deliverTo')}
+              {service === 'delivery' ? t('guest.deliverTo') : t('guest.pickupHeader')}
             </p>
             <p className="font-display font-black text-lg text-ink-1 truncate">{property.name}</p>
             <p className="text-xs text-ink-2 truncate">
-              📍 {property.address}{property.area ? `, ${property.area}` : ''}
+              📍 {service === 'delivery' ? '' : `${t('guest.youAreAt')}: `}
+              {property.address}{property.area ? `, ${property.area}` : ''}
             </p>
           </div>
           <LangToggle className="flex-shrink-0 mt-1" />
@@ -193,13 +245,7 @@ export default function PropertyHomePage() {
       </div>
 
       {/* Persistent cart bar */}
-      {cartCount > 0 && (
-        <div className="flex-shrink-0 p-3 border-t border-surface-4 bg-surface-1">
-          <button className="btn btn-primary btn-lg w-full" onClick={() => navigate(`/qr/${code}/cart`)}>
-            🛒 {t('cart.title')} · {cartCount}
-          </button>
-        </div>
-      )}
+      <CartBar count={cartCount} total={totals.total} onOpen={() => navigate(`/qr/${code}/cart`)} />
     </div>
   )
 }

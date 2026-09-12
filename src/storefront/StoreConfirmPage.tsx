@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { getStoreOrder, storeAction, ApiError } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
-import { money, dateTime, time, phoneDigits, relativeMinutes } from '@/lib/format'
+import { money, dateTime, time, phoneE164, phoneWa, relativeMinutes } from '@/lib/format'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
 import { Spinner, EmptyState } from '@/components/ui'
 import PrintTicket from './PrintTicket'
@@ -157,10 +157,10 @@ export default function StoreConfirmPage() {
           <p className="font-bold text-base text-ink-1">{o.guest.name}</p>
           {o.guest.phone && (
             <div className="flex gap-2 mt-2">
-              <a href={`tel:${phoneDigits(o.guest.phone)}`} className="btn btn-secondary btn-md flex-1">
+              <a href={`tel:${phoneE164(o.guest.phone)}`} className="btn btn-secondary btn-md flex-1">
                 📞 {o.guest.phone}
               </a>
-              <a href={`https://wa.me/${phoneDigits(o.guest.phone)}`} target="_blank" rel="noopener noreferrer"
+              <a href={`https://wa.me/${phoneWa(o.guest.phone)}`} target="_blank" rel="noopener noreferrer"
                  className="btn btn-md bg-[#25D366] text-white px-4">💬</a>
             </div>
           )}

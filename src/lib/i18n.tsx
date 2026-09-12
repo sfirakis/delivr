@@ -48,6 +48,13 @@ const dict = {
     'guest.eta': 'Χρόνος',
     'guest.propertyNotFound': 'Το QR δεν αντιστοιχεί σε ενεργό κατάλυμα.',
     'guest.poweredBy': 'με την υποστήριξη του',
+    'guest.pickupHeader': 'Παραλαβή από το κατάστημα',
+    'guest.youAreAt': 'Βρίσκεσαι σε',
+    'guest.needHelp': 'Χρειάζεσαι βοήθεια;',
+    'guest.helpHint': 'Επικοινώνησε μαζί μας και θα σε εξυπηρετήσουμε.',
+    'guest.callSupport': 'Κλήση',
+    'guest.emailSupport': 'Email',
+    'guest.whatsappSupport': 'WhatsApp',
 
     // store / menu
     'store.menu': 'Μενού',
@@ -72,6 +79,11 @@ const dict = {
     'cart.addMore': 'Πρόσθεσε ακόμη',
     'cart.minOrderWarn': 'Ελάχιστη παραγγελία {amount}. Λείπουν {missing}.',
     'cart.clear': 'Άδειασμα καλαθιού',
+    'cart.items': 'Τα προϊόντα σου',
+    'cart.minProgress': 'Πρόσθεσε {missing} για να φτάσεις την ελάχιστη παραγγελία ({amount}).',
+    'cart.minReached': 'Καλύπτεις την ελάχιστη παραγγελία ✓',
+    'cart.freeDeliveryProgress': 'Πρόσθεσε {missing} και τα μεταφορικά γίνονται δωρεάν.',
+    'cart.freeDeliveryReached': 'Κέρδισες δωρεάν μεταφορικά 🎉',
 
     // checkout
     'checkout.title': 'Στοιχεία παραγγελίας',
@@ -95,6 +107,11 @@ const dict = {
     'checkout.asap': 'Το συντομότερο',
     'checkout.later': 'Για αργότερα',
     'checkout.terms': 'Στέλνοντας την παραγγελία, το κατάστημα λαμβάνει τα στοιχεία σου για να την εκτελέσει.',
+    'checkout.items': 'Η παραγγελία σου',
+    'checkout.promo': 'Κωδικός έκπτωσης',
+    'checkout.promoPh': 'π.χ. WELCOME10',
+    'checkout.promoHint': 'Ο κωδικός ελέγχεται όταν σταλεί η παραγγελία.',
+    'checkout.promoInvalid': 'Ο κωδικός δεν έγινε δεκτός. Δοκίμασε άλλον ή συνέχισε χωρίς.',
 
     // order status
     'order.title': 'Η παραγγελία σου',
@@ -131,7 +148,30 @@ const dict = {
     'err.ORDER_NOT_FOUND': 'Η παραγγελία δεν βρέθηκε.',
     'err.ORDER_CLOSED': 'Η παραγγελία έχει ήδη κλείσει.',
     'err.STORE_NO_CASH': 'Το κατάστημα δεν δέχεται μετρητά.',
+    'err.PROMO_INVALID': 'Ο κωδικός έκπτωσης δεν είναι έγκυρος.',
+    'err.PROMO_EXPIRED': 'Ο κωδικός έκπτωσης έχει λήξει.',
+    'err.PROMO_MIN_ORDER': 'Ο κωδικός απαιτεί μεγαλύτερη παραγγελία.',
+    'err.PROMO_LIMIT': 'Ο κωδικός έχει εξαντληθεί.',
     'err.generic': 'Κάτι πήγε στραβά. Δοκίμασε ξανά.',
+
+    // terms / privacy
+    'terms.title': 'Όροι χρήσης & απόρρητο',
+    'terms.link': 'Όροι χρήσης & απόρρητο',
+    'terms.service.h': '1. Τι είναι το Delivr',
+    'terms.service.p': 'Το Delivr συνδέει τους επισκέπτες ενός καταλύματος με τοπικά καταστήματα. Την παραγγελία την εκτελεί και την τιμολογεί το κατάστημα· το Delivr παρέχει μόνο την πλατφόρμα.',
+    'terms.orders.h': '2. Παραγγελίες',
+    'terms.orders.p': 'Η παραγγελία θεωρείται οριστική όταν την επιβεβαιώσει το κατάστημα. Το κατάστημα μπορεί να την απορρίψει (π.χ. εκτός ωραρίου, εξαντλημένο προϊόν) και ενημερώνεσαι στη σελίδα παρακολούθησης.',
+    'terms.prices.h': '3. Τιμές & πληρωμή',
+    'terms.prices.p': 'Οι τιμές, τα μεταφορικά και η ελάχιστη παραγγελία ορίζονται από το κατάστημα και εμφανίζονται πριν την αποστολή. Η πληρωμή γίνεται με μετρητά κατά την παράδοση ή την παραλαβή.',
+    'terms.cancel.h': '4. Ακύρωση',
+    'terms.cancel.p': 'Για ακύρωση ή αλλαγή, επικοινώνησε απευθείας με το κατάστημα από τη σελίδα της παραγγελίας, το συντομότερο δυνατό.',
+    'terms.data.h': '5. Προσωπικά δεδομένα (GDPR)',
+    'terms.data.p': 'Για κάθε παραγγελία συλλέγουμε όνομα, τηλέφωνο, προαιρετικά email, τα προϊόντα και τη διεύθυνση του καταλύματος. Τα στοιχεία αυτά διαβιβάζονται στο κατάστημα (και στον διανομέα, όπου υπάρχει) αποκλειστικά για την εκτέλεση της παραγγελίας — ποτέ για διαφήμιση και ποτέ σε τρίτους. Διατηρούνται όσο απαιτείται για λογιστικούς λόγους. Έχεις δικαίωμα πρόσβασης, διόρθωσης και διαγραφής: γράψε μας και το τακτοποιούμε.',
+    'terms.contact.h': '6. Επικοινωνία',
+    'terms.contact.p': 'Για οτιδήποτε αφορά τους όρους ή τα δεδομένα σου, χρησιμοποίησε τα στοιχεία επικοινωνίας που εμφανίζονται στην παραγγελία σου.',
+
+    // landing
+    'landing.partner': 'Είσαι συνεργάτης; Σύνδεση',
   },
   en: {
     'app.name': 'Delivr',
@@ -175,6 +215,13 @@ const dict = {
     'guest.eta': 'ETA',
     'guest.propertyNotFound': 'This QR code is not linked to an active property.',
     'guest.poweredBy': 'powered by',
+    'guest.pickupHeader': 'Pick up at the store',
+    'guest.youAreAt': 'You are at',
+    'guest.needHelp': 'Need a hand?',
+    'guest.helpHint': 'Get in touch and we will sort it out.',
+    'guest.callSupport': 'Call',
+    'guest.emailSupport': 'Email',
+    'guest.whatsappSupport': 'WhatsApp',
 
     'store.menu': 'Menu',
     'store.info': 'Info',
@@ -197,6 +244,11 @@ const dict = {
     'cart.addMore': 'Add more items',
     'cart.minOrderWarn': 'Minimum order {amount}. Add {missing} more.',
     'cart.clear': 'Clear cart',
+    'cart.items': 'Your items',
+    'cart.minProgress': 'Add {missing} more to reach the {amount} minimum order.',
+    'cart.minReached': 'Minimum order reached ✓',
+    'cart.freeDeliveryProgress': 'Add {missing} more and delivery is free.',
+    'cart.freeDeliveryReached': 'You got free delivery 🎉',
 
     'checkout.title': 'Order details',
     'checkout.name': 'Full name',
@@ -219,6 +271,11 @@ const dict = {
     'checkout.asap': 'As soon as possible',
     'checkout.later': 'Schedule for later',
     'checkout.terms': 'By sending this order the store receives your details in order to fulfil it.',
+    'checkout.items': 'Your order',
+    'checkout.promo': 'Promo code',
+    'checkout.promoPh': 'e.g. WELCOME10',
+    'checkout.promoHint': 'The code is checked when the order is sent.',
+    'checkout.promoInvalid': 'That code was not accepted. Try another one or carry on without it.',
 
     'order.title': 'Your order',
     'order.number': 'Order no.',
@@ -253,7 +310,28 @@ const dict = {
     'err.ORDER_NOT_FOUND': 'Order not found.',
     'err.ORDER_CLOSED': 'This order is already closed.',
     'err.STORE_NO_CASH': 'This store does not accept cash.',
+    'err.PROMO_INVALID': 'That promo code is not valid.',
+    'err.PROMO_EXPIRED': 'That promo code has expired.',
+    'err.PROMO_MIN_ORDER': 'That promo code needs a larger order.',
+    'err.PROMO_LIMIT': 'That promo code has been used up.',
     'err.generic': 'Something went wrong. Please try again.',
+
+    'terms.title': 'Terms & privacy',
+    'terms.link': 'Terms & privacy',
+    'terms.service.h': '1. What Delivr is',
+    'terms.service.p': 'Delivr connects guests staying at a property with local stores. The order is fulfilled and invoiced by the store; Delivr only provides the platform.',
+    'terms.orders.h': '2. Orders',
+    'terms.orders.p': 'An order is final once the store confirms it. The store may decline it (for example outside opening hours, or an item that ran out) and you are told on the tracking page.',
+    'terms.prices.h': '3. Prices & payment',
+    'terms.prices.p': 'Prices, delivery fees and the minimum order are set by the store and shown before you send the order. Payment is cash on delivery or on pickup.',
+    'terms.cancel.h': '4. Cancellation',
+    'terms.cancel.p': 'To cancel or change an order, contact the store directly from your order page as soon as possible.',
+    'terms.data.h': '5. Personal data (GDPR)',
+    'terms.data.p': 'For each order we collect your name, phone, optional email, the items and the address of the property. These details are passed to the store (and to the courier, where there is one) solely to fulfil the order — never for marketing and never to third parties. They are kept for as long as accounting rules require. You have the right to access, correct and delete them: write to us and we will take care of it.',
+    'terms.contact.h': '6. Contact',
+    'terms.contact.p': 'For anything about these terms or your data, use the contact details shown on your order.',
+
+    'landing.partner': 'Are you a partner? Sign in',
   },
 } as const
 
@@ -316,7 +394,9 @@ export function LangToggle({ className = '' }: { className?: string }) {
           type="button"
           onClick={() => setLang(l)}
           aria-pressed={lang === l}
-          className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition
+          // 44px is the minimum comfortable touch target on a phone.
+          className={`min-w-[44px] min-h-[44px] px-3 inline-flex items-center justify-center
+            text-xs font-bold rounded-full transition
             ${lang === l ? 'bg-ink-1 text-white' : 'text-ink-2'}`}
         >
           {l === 'el' ? 'ΕΛ' : 'EN'}

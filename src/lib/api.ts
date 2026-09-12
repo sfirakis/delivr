@@ -167,6 +167,7 @@ const KNOWN_CODES = [
   'PROPERTY_NOT_FOUND', 'STORE_NOT_FOUND', 'ORDER_NOT_FOUND', 'ORDER_CLOSED',
   'STORE_NO_CASH', 'CASH_DISABLED', 'ONLINE_PAYMENT_DISABLED', 'BAD_SERVICE',
   'BAD_ACTION', 'PROPERTY_REQUIRED', 'SCHEDULING_DISABLED',
+  'PROMO_INVALID', 'PROMO_EXPIRED', 'PROMO_MIN_ORDER', 'PROMO_LIMIT',
 ]
 
 function toApiError(error: { message?: string } | null): ApiError {
@@ -265,19 +266,54 @@ export interface PublicMenuItem {
   }[]
 }
 
+/** Row shape as PostgREST returns it — embedded resources keep their table names. */
+interface MenuItemRow extends Omit<PublicMenuItem, 'modifier_groups'> {
+  item_modifier_groups?: {
+    id: string; name: string; is_required: boolean; min_select: number; max_select: number; sort_order: number
+    item_modifiers: { id: string; name: string; price: number; is_default: boolean; sort_order: number }[]
+  }[]
+}
+
+const bySortOrder = (a: { sort_order?: number }, b: { sort_order?: number }) =>
+  (a.sort_order ?? 0) - (b.sort_order ?? 0)
+
 export async function getStoreMenu(storeId: string) {
   const [{ data: cats, error: e1 }, { data: items, error: e2 }] = await Promise.all([
     supabase.from('menu_categories').select('id,name,description,sort_order')
       .eq('store_id', storeId).eq('is_active', true).order('sort_order'),
     supabase.from('menu_items')
-      .select('*, modifier_groups:item_modifier_groups(id,name,is_required,min_select,max_select,sort_order, modifiers:item_modifiers(id,name,price,is_default,sort_order))')
-      .eq('store_id', storeId).order('sort_order'),
+      .select('*, item_modifier_groups(id,name,is_required,min_select,max_select,sort_order, item_modifiers(id,name,price,is_default,sort_order))')
+      .eq('store_id', storeId)
+      // A guest must never be offered something the kitchen has switched off.
+      .eq('is_available', true)
+      .order('sort_order')
+      // Modifier groups and their options carry their own order — without these
+      // the embedded rows come back in whatever order Postgres happens to pick.
+      .order('sort_order', { referencedTable: 'item_modifier_groups', ascending: true })
+      .order('sort_order', { referencedTable: 'item_modifier_groups.item_modifiers', ascending: true }),
   ])
   if (e1) throw toApiError(e1)
   if (e2) throw toApiError(e2)
+
+  // Re-shape to the names the UI uses, and keep the sort as a client-side guarantee.
+  const mapped: PublicMenuItem[] = ((items ?? []) as MenuItemRow[]).map(row => {
+    const { item_modifier_groups, ...item } = row
+    return {
+      ...item,
+      modifier_groups: [...(item_modifier_groups ?? [])].sort(bySortOrder).map(g => ({
+        id: g.id,
+        name: g.name,
+        is_required: g.is_required,
+        min_select: g.min_select,
+        max_select: g.max_select,
+        modifiers: [...(g.item_modifiers ?? [])].sort(bySortOrder),
+      })),
+    }
+  })
+
   return {
     categories: (cats ?? []) as { id: string; name: string; description: string | null; sort_order: number }[],
-    items: (items ?? []) as PublicMenuItem[],
+    items: mapped,
   }
 }
 

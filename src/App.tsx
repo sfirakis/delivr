@@ -1,16 +1,9 @@
 import { useEffect } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
-import { BottomNav } from '@/components/layout/AppShell'
-import SplashPage    from '@/pages/SplashPage'
-import AuthPage      from '@/pages/AuthPage'
-import HomePage      from '@/pages/HomePage'
-import StorePage     from '@/pages/StorePage'
-import CartPage      from '@/pages/CartPage'
-import CheckoutPage  from '@/pages/CheckoutPage'
-import TrackingPage  from '@/pages/TrackingPage'
-import OrdersPage    from '@/pages/OrdersPage'
-import { ProfilePage, FavoritesPage } from '@/pages/OtherPages'
+import LandingPage from '@/pages/LandingPage'
+import AuthPage    from '@/pages/AuthPage'
+import TermsPage   from '@/pages/TermsPage'
 import MerchantApp from '@/merchant/MerchantApp'
 import DriverApp   from '@/driver/DriverApp'
 import AdminApp    from '@/admin/AdminApp'
@@ -25,13 +18,12 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
-/** Phone-sized frame used by the customer-facing screens. */
-function PhoneFrame({ children, nav }: { children: React.ReactNode; nav?: React.ReactNode }) {
+/** Phone-sized frame used by the guest-facing screens. */
+function PhoneFrame({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-surface-2 flex items-center justify-center">
       <div className="app-shell">
         <div className="flex-1 relative overflow-hidden">{children}</div>
-        {nav}
       </div>
     </div>
   )
@@ -58,33 +50,21 @@ export default function App() {
   if (fullWidth) return <div className="dash-shell">{dashboardRoutes}</div>
 
   return (
-    <PhoneFrame nav={<BottomNavIfNeeded />}>
+    <PhoneFrame>
       <Routes>
-        {/* Guest / QR flow — public, no account needed */}
+        {/* Guest / QR flow — public, no account needed. This is the product. */}
         <Route path="/qr/:code/*" element={<GuestApp />} />
         <Route path="/t/:token"   element={<GuestOrderPage />} />
 
-        {/* Registered customer app */}
-        <Route path="/"          element={<SplashPage />} />
-        <Route path="/auth"      element={<AuthPage />} />
-        <Route path="/home"      element={<AuthGuard><HomePage /></AuthGuard>} />
-        <Route path="/store/:storeId" element={<AuthGuard><StorePage /></AuthGuard>} />
-        <Route path="/cart"      element={<AuthGuard><CartPage /></AuthGuard>} />
-        <Route path="/checkout"  element={<AuthGuard><CheckoutPage /></AuthGuard>} />
-        <Route path="/track/:orderId" element={<AuthGuard><TrackingPage /></AuthGuard>} />
-        <Route path="/orders"    element={<AuthGuard><OrdersPage /></AuthGuard>} />
-        <Route path="/profile"   element={<AuthGuard><ProfilePage /></AuthGuard>} />
-        <Route path="/favorites" element={<AuthGuard><FavoritesPage /></AuthGuard>} />
-        <Route path="*" element={<Navigate to="/home" replace />} />
+        {/* Public shell */}
+        <Route path="/"      element={<LandingPage />} />
+        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/auth"  element={<AuthPage />} />
+
+        {/* An unknown URL is almost always a mistyped QR link, not a partner
+            trying to sign in — send it to the landing, never to /auth. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PhoneFrame>
   )
-}
-
-/** The bottom nav belongs to the registered-customer app only. */
-function BottomNavIfNeeded() {
-  const location = useLocation()
-  const isCustomerApp = ['/home', '/orders', '/favorites', '/profile'].includes(location.pathname)
-  if (!isCustomerApp) return null
-  return <BottomNav />
 }
