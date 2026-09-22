@@ -51,15 +51,17 @@ JOIN (VALUES
 ) AS z(slug,name,area,city,pc,fee,mo,extra,fa,so) ON z.slug = s.slug
 WHERE NOT EXISTS (SELECT 1 FROM store_zones sz WHERE sz.store_id = s.id AND sz.name = z.name);
 
+-- address holds the STREET only. Area, city and postcode have their own columns
+-- and the UI appends whichever of them the street does not already mention.
 INSERT INTO properties (code, name, type, owner_name, contact_phone, whatsapp, address, city, area,
   postal_code, lat, lng, floor, doorbell, access_notes, welcome_message, billing_mode, billing_value, billing_direction)
 VALUES
  ('AEGEAN1','Villa Aegean Blue','villa','Γιώργος Σ.','+306900000010','+306900000010',
-  'Οδός Σχίσμα 14, Ελούντα','Ελούντα','Ελούντα','72053',35.2600,25.7220,NULL,'Aegean Blue',
+  'Οδός Σχίσμα 14','Ελούντα','Ελούντα','72053',35.2600,25.7220,NULL,'Aegean Blue',
   'Λευκή πύλη στα δεξιά μετά το ξενοδοχείο. Parking μέσα.',
   'Καλώς ήρθατε στη Villa Aegean Blue! Παραγγείλτε φαγητό απευθείας στη βίλα.','inherit',0,'inherit'),
  ('SUNSET2A','Sunset Apartment 2A','apartment','Μαρία Κ.','+306900000011','+306900000011',
-  'Ρούσου Καπετανάκη 22, Άγιος Νικόλαος','Άγιος Νικόλαος','Άγιος Νικόλαος','72100',35.1890,25.7160,'2ος','Kapetanaki 2A',
+  'Ρούσου Καπετανάκη 22','Άγιος Νικόλαος','Άγιος Νικόλαος','72100',35.1890,25.7160,'2ος','Kapetanaki 2A',
   'Κουδούνι 2Α, ασανσέρ στο βάθος.','Καλώς ήρθατε! Δείτε τι παραδίδει στη γειτονιά μας.','inherit',0,'inherit'),
  ('OLIVE3','Villa Olive Grove','villa','Νίκος Π.','+306900000012','+306900000012',
   'Επαρχιακή Οδός Καλού Χωριού 5','Καλό Χωριό','Καλό Χωριό','72100',35.1600,25.8000,NULL,'Olive Grove',
@@ -159,3 +161,11 @@ VALUES
  ('Host Partner','Το κατάλυμα εισπράττει 8% σε κάθε παραγγελία','property',0,'month',0,
   'commission',8,'["QR κάρτα","8% απόδοση","Αναφορά εσόδων"]'::jsonb,1)
 ON CONFLICT DO NOTHING;
+
+-- ── A store selling on its own link ──────────────────────────
+-- Demonstrates the standalone flow: the same shop can be ordered from at
+-- /store/taverna-marina without any property QR behind the order.
+UPDATE stores SET
+  standalone_enabled = true,
+  standalone_intro   = 'Παραγγείλτε απευθείας από εμάς — delivery στην περιοχή μας & take away.'
+WHERE slug = 'taverna-marina';

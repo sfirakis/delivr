@@ -51,6 +51,57 @@ export function relativeMinutes(iso: string | null | undefined): number {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
 }
 
+/** Lowercase and strip Greek/Latin accents, so «Ελούντα» matches «ΕΛΟΥΝΤΑ». */
+function foldAccents(t: string): string {
+  // Lowercase first: «ΑΓΙΟΣ» lowercases to a final sigma «αγιος», which only
+  // matches «Άγιος» once both sigmas are folded to the same letter.
+  const from = 'άέήίόύώϊϋΐΰςáéíóúàèìòùäëïöü'
+  const to   = 'αεηιουωιυιυσaeiouaeiouaeiou'
+  let out = ''
+  for (const ch of t.toLowerCase()) {
+    const i = from.indexOf(ch)
+    out += i >= 0 ? to[i] : ch
+  }
+  return out.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * True when two place names are the same word, give or take accents, case and
+ * spacing — «ΕΛΟΥΝΤΑ», «Ελούντα» and «elounda» all name the same village.
+ */
+export function foldMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = foldAccents(a ?? '')
+  const right = foldAccents(b ?? '')
+  return left !== '' && left === right
+}
+
+/**
+ * Builds one address line from parts, skipping anything the address already says.
+ *
+ * Operators type the street however they like — some include the area, some
+ * don't — so blindly appending area and city produces «Οδός Σχίσμα 14, Ελούντα,
+ * Ελούντα». This keeps the first mention and drops the repeats.
+ */
+export function fullAddress(
+  address: string | null | undefined,
+  ...parts: (string | null | undefined)[]
+): string {
+  const base = (address ?? '').trim()
+  const kept: string[] = base ? [base] : []
+  let seen = foldAccents(base)
+
+  for (const part of parts) {
+    const value = (part ?? '').trim()
+    if (!value) continue
+    const folded = foldAccents(value)
+    if (!folded || seen.includes(folded)) continue
+    kept.push(value)
+    seen += ` ${folded}`
+  }
+
+  return kept.join(', ')
+}
+
 // ── Phone numbers ────────────────────────────────────────────
 // Greek numbers are stored however the merchant typed them ("694 412 3456",
 // "+30 28210 12345", "0030281..."). Deep links need E.164, so everything is

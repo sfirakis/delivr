@@ -8,8 +8,9 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "e2e": "node e2e/guest-flow.mjs && node e2e/store-confirm.mjs && node e2e/admin-dashboard.mjs",
-    "typecheck": "tsc --noEmit"
+    "e2e": "node e2e/guest-flow.mjs && node e2e/shop-flow.mjs && node e2e/store-confirm.mjs && node e2e/admin-dashboard.mjs",
+    "typecheck": "tsc --noEmit",
+    "e2e:config": "vite build && vite preview --port 4173 & sleep 6 && node e2e/config-error.mjs"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.0.0",

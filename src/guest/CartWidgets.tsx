@@ -81,3 +81,37 @@ export function CartBar({ count, total, onOpen }: {
     </div>
   )
 }
+
+/**
+ * The money breakdown, identical wherever it is shown so the number the guest
+ * reads in the cart is the number they confirm at checkout.
+ */
+export function TotalsCard({ totals, service }: { totals: CartTotals; service: ServiceType }) {
+  const { t, lang } = useI18n()
+  const { subtotal, discountPct, discount, fee, total } = totals
+  return (
+    <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4 space-y-2 text-sm">
+      <div className="flex justify-between">
+        <span className="text-ink-2">{t('cart.subtotal')}</span>
+        <span className="font-semibold">{money(subtotal, lang)}</span>
+      </div>
+      {discount > 0 && (
+        <div className="flex justify-between text-success">
+          <span>{t('store.takeawayDiscount')}{discountPct > 0 ? ` (−${discountPct}%)` : ''}</span>
+          <span className="font-semibold">−{money(discount, lang)}</span>
+        </div>
+      )}
+      {service === 'delivery' && (
+        <div className="flex justify-between">
+          <span className="text-ink-2">{t('cart.deliveryFee')}</span>
+          <span className="font-semibold">{fee === 0 ? t('common.free') : money(fee, lang)}</span>
+        </div>
+      )}
+      <div className="h-px bg-surface-4" />
+      <div className="flex justify-between text-base">
+        <span className="font-display font-bold">{t('cart.total')}</span>
+        <span className="font-display font-black text-brand">{money(total, lang)}</span>
+      </div>
+    </div>
+  )
+}

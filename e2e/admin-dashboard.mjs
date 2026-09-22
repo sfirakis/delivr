@@ -3,7 +3,7 @@
  * Auth and Supabase are stubbed, so this checks rendering and wiring, not the DB
  * (the SQL behind these screens is exercised directly against Postgres).
  */
-import { chromium } from 'playwright'
+import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
@@ -96,7 +96,7 @@ const SETTINGS_ROW = {
 }
 
 const errors = []
-const browser = await chromium.launch({
+const browser = await launchChromium({
   executablePath: '/opt/pw-browsers/chromium',
   proxy: { server: process.env.HTTPS_PROXY || 'http://127.0.0.1:35779', bypass: 'localhost,127.0.0.1,::1' },
 })

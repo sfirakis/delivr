@@ -5,7 +5,7 @@ import {
   getPropertyByCode, getPublicSettings, getStoresForProperty, logScan,
   type MatchedStore, type ServiceType,
 } from '@/lib/api'
-import { money, num, telHref, waHref } from '@/lib/format'
+import { money, num, telHref, waHref, fullAddress } from '@/lib/format'
 import { useI18n, LangToggle } from '@/lib/i18n'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
@@ -184,7 +184,7 @@ export default function PropertyHomePage() {
             <p className="font-display font-black text-lg text-ink-1 truncate">{property.name}</p>
             <p className="text-xs text-ink-2 truncate">
               📍 {service === 'delivery' ? '' : `${t('guest.youAreAt')}: `}
-              {property.address}{property.area ? `, ${property.area}` : ''}
+              {fullAddress(property.address, property.area, property.city)}
             </p>
           </div>
           <LangToggle className="flex-shrink-0 mt-1" />

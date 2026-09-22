@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { getStoreOrder, storeAction, ApiError } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
-import { money, dateTime, time, phoneE164, phoneWa, relativeMinutes } from '@/lib/format'
+import { money, dateTime, time, phoneE164, phoneWa, relativeMinutes, fullAddress } from '@/lib/format'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
 import { Spinner, EmptyState } from '@/components/ui'
 import PrintTicket from './PrintTicket'
@@ -77,7 +77,8 @@ export default function StoreConfirmPage() {
   const waitMin = relativeMinutes(o.created_at)
   const mapsHref = o.property?.lat && o.property?.lng
     ? `https://www.google.com/maps/search/?api=1&query=${o.property.lat},${o.property.lng}`
-    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr?.street ?? o.property?.address ?? '')}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+        fullAddress(addr?.street ?? o.property?.address, o.property?.area, o.property?.city))}`
 
   const nextActions: { action: string; label: string; cls: string }[] = (() => {
     switch (o.status) {
@@ -172,7 +173,10 @@ export default function StoreConfirmPage() {
                 {el ? 'Διεύθυνση παράδοσης' : 'Delivery address'}
               </p>
               {o.property?.name && <p className="font-bold text-sm">{o.property.name}</p>}
-              <p className="text-sm text-ink-2">{addr?.street ?? o.property?.address}</p>
+              <p className="text-sm text-ink-2">
+                {fullAddress(addr?.street ?? o.property?.address, o.property?.area,
+                             o.property?.city, addr?.postal_code)}
+              </p>
               {(addr?.floor || addr?.doorbell) && (
                 <p className="text-xs text-ink-3">{[addr?.floor, addr?.doorbell].filter(Boolean).join(' · ')}</p>
               )}

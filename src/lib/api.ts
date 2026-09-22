@@ -72,6 +72,61 @@ export interface MatchedStore {
   accepts_cash: boolean
 }
 
+/** One delivery zone as the store's own page offers it to a customer. */
+export interface StoreZone {
+  id: string
+  name: string
+  area: string | null
+  city: string | null
+  postal_code: string | null
+  fee: number
+  min_order: number
+  free_above: number | null
+  extra_min: number
+}
+
+/** A store reached through its own public link, outside the property QR flow. */
+export interface StandaloneStore {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  intro: string | null
+  category: string
+  cuisine_tags: string[] | null
+  logo_url: string | null
+  cover_url: string | null
+  address: string
+  city: string | null
+  phone: string | null
+  rating: number
+  review_count: number
+  discount_pct: number | null
+  pickup_discount_pct: number
+  delivery_fee: number
+  min_order: number
+  free_above: number | null
+  eta_min: number
+  prep_min: number | null
+  supports_delivery: boolean
+  supports_takeaway: boolean
+  accepts_cash: boolean
+  is_open_now: boolean
+  /** True when the store has drawn zones: the customer must pick one of them. */
+  zones_required: boolean
+  zones: StoreZone[]
+}
+
+export interface OrderAddress {
+  street: string
+  area?: string
+  postal_code?: string
+  city?: string
+  floor?: string
+  doorbell?: string
+  notes?: string
+}
+
 export interface PlaceOrderItem {
   menu_item_id: string
   quantity: number
@@ -167,6 +222,7 @@ const KNOWN_CODES = [
   'PROPERTY_NOT_FOUND', 'STORE_NOT_FOUND', 'ORDER_NOT_FOUND', 'ORDER_CLOSED',
   'STORE_NO_CASH', 'CASH_DISABLED', 'ONLINE_PAYMENT_DISABLED', 'BAD_SERVICE',
   'BAD_ACTION', 'PROPERTY_REQUIRED', 'SCHEDULING_DISABLED',
+  'STANDALONE_DISABLED', 'ADDRESS_REQUIRED', 'AREA_REQUIRED',
   'PROMO_INVALID', 'PROMO_EXPIRED', 'PROMO_MIN_ORDER', 'PROMO_LIMIT',
 ]
 
@@ -207,6 +263,9 @@ export const logScan = (code: string) =>
     p_language: navigator.language,
   }).catch(() => { /* analytics must never block the guest */ })
 
+export const getStoreBySlug = (slug: string) =>
+  rpc<StandaloneStore>('delivr_store_by_slug', { p_slug: slug })
+
 export const placeOrder = (input: {
   code: string | null
   storeId: string
@@ -217,6 +276,8 @@ export const placeOrder = (input: {
   scheduledFor?: string | null
   payment?: string
   channel?: string
+  /** Only for a store-link order: where the customer wants it delivered. */
+  address?: OrderAddress | null
 }) => rpc<PlacedOrder>('delivr_place_order', {
   p_code: input.code,
   p_store_id: input.storeId,
@@ -227,6 +288,7 @@ export const placeOrder = (input: {
   p_scheduled: input.scheduledFor ?? null,
   p_payment: input.payment ?? 'cash',
   p_channel: input.channel ?? 'qr',
+  p_address: input.address ?? null,
 })
 
 export const getOrderStatus = (token: string) =>
