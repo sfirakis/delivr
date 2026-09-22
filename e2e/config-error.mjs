@@ -1,8 +1,8 @@
 /** A build with no Supabase credentials must say so, not paint a white page. */
-import { chromium } from 'playwright'
+import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:4173'
-const browser = await chromium.launch({
+const browser = await launchChromium({
   executablePath: '/opt/pw-browsers/chromium',
   proxy: { server: process.env.HTTPS_PROXY || 'http://127.0.0.1:35779', bypass: 'localhost,127.0.0.1,::1' },
 })

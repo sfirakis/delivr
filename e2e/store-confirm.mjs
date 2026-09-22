@@ -2,7 +2,7 @@
  * The store-side surface: the login-free link that arrives by email.
  * Covers accept-with-prep-time, the reject flow and the thermal ticket markup.
  */
-import { chromium } from 'playwright'
+import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
@@ -39,7 +39,7 @@ const order = () => ({
 })
 
 const errors = []
-const browser = await chromium.launch({
+const browser = await launchChromium({
   executablePath: '/opt/pw-browsers/chromium',
   proxy: { server: process.env.HTTPS_PROXY || 'http://127.0.0.1:35779', bypass: 'localhost,127.0.0.1,::1' },
 })
@@ -103,7 +103,8 @@ await shot(`${OUT}/06-store-confirm.png`)
 
 await step('Call, WhatsApp and maps links point at the right targets', async () => {
   const tel = await page.getByRole('link', { name: /6944123456/ }).getAttribute('href')
-  if (tel !== 'tel:6944123456') throw new Error(`tel link wrong: ${tel}`)
+  // Phone numbers go out in E.164, so a bare Greek mobile picks up +30.
+  if (tel !== 'tel:+306944123456') throw new Error(`tel link wrong: ${tel}`)
   const wa = await page.locator('a[href^="https://wa.me/"]').first().getAttribute('href')
   if (!wa.includes('6944123456')) throw new Error(`whatsapp link wrong: ${wa}`)
   const maps = await page.getByRole('link', { name: /χάρτη/ }).getAttribute('href')

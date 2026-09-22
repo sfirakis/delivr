@@ -8,6 +8,7 @@ import MerchantApp from '@/merchant/MerchantApp'
 import DriverApp   from '@/driver/DriverApp'
 import AdminApp    from '@/admin/AdminApp'
 import GuestApp        from '@/guest/GuestApp'
+import ShopApp         from '@/shop/ShopApp'
 import GuestOrderPage  from '@/guest/pages/GuestOrderPage'
 import StoreConfirmPage from '@/storefront/StoreConfirmPage'
 
@@ -55,6 +56,9 @@ export default function App() {
         {/* Guest / QR flow — public, no account needed. This is the product. */}
         <Route path="/qr/:code/*" element={<GuestApp />} />
         <Route path="/t/:token"   element={<GuestOrderPage />} />
+
+        {/* A store's own link — same ordering flow, customer-typed address. */}
+        <Route path="/store/:slug/*" element={<ShopApp />} />
 
         {/* Public shell */}
         <Route path="/"      element={<LandingPage />} />

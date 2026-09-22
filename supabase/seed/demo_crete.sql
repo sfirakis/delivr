@@ -161,3 +161,11 @@ VALUES
  ('Host Partner','Το κατάλυμα εισπράττει 8% σε κάθε παραγγελία','property',0,'month',0,
   'commission',8,'["QR κάρτα","8% απόδοση","Αναφορά εσόδων"]'::jsonb,1)
 ON CONFLICT DO NOTHING;
+
+-- ── A store selling on its own link ──────────────────────────
+-- Demonstrates the standalone flow: the same shop can be ordered from at
+-- /store/taverna-marina without any property QR behind the order.
+UPDATE stores SET
+  standalone_enabled = true,
+  standalone_intro   = 'Παραγγείλτε απευθείας από εμάς — delivery στην περιοχή μας & take away.'
+WHERE slug = 'taverna-marina';

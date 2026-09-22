@@ -10,8 +10,12 @@ Status & εκκρεμότητες: [`ROADMAP.md`](ROADMAP.md).
 - **Vite + React 18 + TS** SPA (default branch **master**). EL/EN μέσω
   `src/lib/i18n`. React Query + Supabase JS.
 - **Το πραγματικό προϊόν** = guest flow `src/guest/**` (routes `/qr/:code/*`,
-  `/t/:token`, `/s/:token`) — όλα μέσω 8 `delivr_*` SECURITY DEFINER RPCs
+  `/t/:token`, `/s/:token`) — όλα μέσω `delivr_*` SECURITY DEFINER RPCs
   (migrations 005-007). ΠΟΤΕ τιμολόγηση στον client.
+- **Standalone store** `src/shop/**` (route `/store/:slug`): το ίδιο flow για
+  κατάστημα χωρίς δικά μας καταλύματα — ο πελάτης γράφει διεύθυνση, η ζώνη
+  ελέγχεται με `delivr_match_address` (migrations 012/013). Απαιτεί
+  `stores.standalone_enabled`.
 - Merchant/Driver/Admin apps: `src/{merchant,driver,admin}` (auth-guarded).
 - Edge function `notify-order` (Resend) — μόνο αυτή είναι deployed.
 
@@ -32,6 +36,9 @@ npm run build                  # production build (πρέπει πάντα πρ�
   των migrations 009/010 που ξανάνοιξαν ό,τι έκλεισε η 008).
 - Τηλέφωνα σε E.164 πριν από wa.me/tel.
 - Ό,τι βγαίνει στον guest: EL + EN.
+- Το `supabase/migrations/` πρέπει να καθρεφτίζει τη live βάση: ό,τι
+  εφαρμόζεται με MCP, γράφεται και σε αρχείο (το μάθημα των 011a/011b που
+  έζησαν 10 μέρες μόνο στη βάση).
 
 ## Project memory
 

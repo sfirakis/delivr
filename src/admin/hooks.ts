@@ -41,6 +41,9 @@ export interface AdminStore {
   is_open: boolean
   is_active: boolean
   is_promoted: boolean
+  /** Store takes orders from its own /store/<slug> link, with no property behind them. */
+  standalone_enabled: boolean
+  standalone_intro: string | null
   rating: number
   review_count: number
   notes: string | null

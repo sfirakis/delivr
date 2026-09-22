@@ -153,6 +153,10 @@ const dict = {
     'err.PROMO_MIN_ORDER': 'Ο κωδικός απαιτεί μεγαλύτερη παραγγελία.',
     'err.PROMO_LIMIT': 'Ο κωδικός έχει εξαντληθεί.',
     'err.generic': 'Κάτι πήγε στραβά. Δοκίμασε ξανά.',
+    'err.STANDALONE_DISABLED': 'Το κατάστημα δεν δέχεται παραγγελίες από αυτόν τον σύνδεσμο.',
+    'err.ADDRESS_REQUIRED': 'Συμπλήρωσε τη διεύθυνση παράδοσης.',
+    'err.AREA_REQUIRED': 'Διάλεξε περιοχή παράδοσης.',
+    'err.PROPERTY_REQUIRED': 'Η παραγγελία χρειάζεται διεύθυνση παράδοσης.',
 
     // terms / privacy
     'terms.title': 'Όροι χρήσης & απόρρητο',
@@ -172,6 +176,30 @@ const dict = {
 
     // landing
     'landing.partner': 'Είσαι συνεργάτης; Σύνδεση',
+
+    // store's own link (no QR, no property)
+    'shop.orderDirect': 'Παραγγελία απευθείας από το κατάστημα',
+    'shop.chooseArea': 'Περιοχή παράδοσης',
+    'shop.chooseAreaPh': 'Διάλεξε περιοχή',
+    'shop.areaFree': 'Περιοχή / συνοικία',
+    'shop.areaFreePh': 'π.χ. Ελούντα',
+    'shop.notServed': 'Δεν παραδίδουμε ακόμη σε αυτή την περιοχή. Διάλεξε take away ή κάλεσέ μας.',
+    'shop.street': 'Διεύθυνση & αριθμός',
+    'shop.streetPh': 'π.χ. Οδός Σχίσμα 14',
+    'shop.postal': 'Τ.Κ.',
+    'shop.city': 'Πόλη',
+    'shop.floor': 'Όροφος',
+    'shop.floorPh': 'π.χ. 2ος',
+    'shop.doorbell': 'Κουδούνι',
+    'shop.doorbellPh': 'π.χ. Παπαδάκης',
+    'shop.addressNotes': 'Οδηγίες για τον διανομέα',
+    'shop.addressNotesPh': 'π.χ. μπλε πόρτα, δίπλα στο φαρμακείο',
+    'shop.addressSaved': 'Η διεύθυνση αποθηκεύεται σε αυτή τη συσκευή για την επόμενη φορά.',
+    'shop.deliverHere': 'Παράδοση εδώ',
+    'shop.pickUpHere': 'Παραλαβή από το κατάστημα',
+    'shop.noDelivery': 'Το κατάστημα κάνει μόνο take away.',
+    'shop.noTakeaway': 'Το κατάστημα κάνει μόνο delivery.',
+    'shop.notFound': 'Ο σύνδεσμος δεν αντιστοιχεί σε ενεργό κατάστημα.',
   },
   en: {
     'app.name': 'Delivr',
@@ -315,6 +343,10 @@ const dict = {
     'err.PROMO_MIN_ORDER': 'That promo code needs a larger order.',
     'err.PROMO_LIMIT': 'That promo code has been used up.',
     'err.generic': 'Something went wrong. Please try again.',
+    'err.STANDALONE_DISABLED': 'This store does not take orders from this link.',
+    'err.ADDRESS_REQUIRED': 'Please fill in the delivery address.',
+    'err.AREA_REQUIRED': 'Please pick a delivery area.',
+    'err.PROPERTY_REQUIRED': 'This order needs a delivery address.',
 
     'terms.title': 'Terms & privacy',
     'terms.link': 'Terms & privacy',
@@ -332,6 +364,29 @@ const dict = {
     'terms.contact.p': 'For anything about these terms or your data, use the contact details shown on your order.',
 
     'landing.partner': 'Are you a partner? Sign in',
+
+    'shop.orderDirect': 'Order directly from the store',
+    'shop.chooseArea': 'Delivery area',
+    'shop.chooseAreaPh': 'Pick an area',
+    'shop.areaFree': 'Area / neighbourhood',
+    'shop.areaFreePh': 'e.g. Elounda',
+    'shop.notServed': 'We do not deliver to that area yet. Choose takeaway or give us a call.',
+    'shop.street': 'Street & number',
+    'shop.streetPh': 'e.g. Schisma street 14',
+    'shop.postal': 'Postcode',
+    'shop.city': 'City',
+    'shop.floor': 'Floor',
+    'shop.floorPh': 'e.g. 2nd',
+    'shop.doorbell': 'Doorbell',
+    'shop.doorbellPh': 'e.g. Papadakis',
+    'shop.addressNotes': 'Directions for the driver',
+    'shop.addressNotesPh': 'e.g. blue door, next to the pharmacy',
+    'shop.addressSaved': 'Your address is kept on this device for next time.',
+    'shop.deliverHere': 'Deliver here',
+    'shop.pickUpHere': 'Pick up at the store',
+    'shop.noDelivery': 'This store is takeaway only.',
+    'shop.noTakeaway': 'This store is delivery only.',
+    'shop.notFound': 'This link does not match an active store.',
   },
 } as const
 

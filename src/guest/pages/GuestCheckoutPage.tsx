@@ -6,7 +6,7 @@ import {
   getPropertyByCode, getPublicSettings, getStoresForProperty,
   placeOrder, notifyOrder, ApiError,
 } from '@/lib/api'
-import { money, num, fullAddress } from '@/lib/format'
+import { money, fullAddress } from '@/lib/format'
 import { useI18n, type TKey } from '@/lib/i18n'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'

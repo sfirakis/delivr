@@ -14,14 +14,35 @@ export interface GuestCartLine {
   notes: string | null
 }
 
+/** What a walk-up customer types when there is no property behind the order. */
+export interface CustomerAddress {
+  street: string
+  area: string
+  postal_code: string
+  city: string
+  floor: string
+  doorbell: string
+  notes: string
+}
+
+export const emptyAddress: CustomerAddress = {
+  street: '', area: '', postal_code: '', city: '', floor: '', doorbell: '', notes: '',
+}
+
 interface GuestCartState {
   propertyCode: string | null
+  /** Set instead of propertyCode when the order came from a store's own link. */
+  storeSlug: string | null
+  /** Remembered on this device so a returning customer does not retype it. */
+  address: CustomerAddress
   storeId: string | null
   storeName: string | null
   service: 'delivery' | 'pickup'
   lines: GuestCartLine[]
 
   setContext: (propertyCode: string, service: 'delivery' | 'pickup') => void
+  setStoreContext: (slug: string, service: 'delivery' | 'pickup') => void
+  setAddress: (address: CustomerAddress) => void
   setService: (s: 'delivery' | 'pickup') => void
   addItem: (storeId: string, storeName: string, item: PublicMenuItem,
             modifiers: { id: string; name: string; price: number }[], qty: number, notes: string | null) => void
@@ -39,20 +60,34 @@ export const useGuestCart = create<GuestCartState>()(
   persist(
     (set, get) => ({
       propertyCode: null,
+      storeSlug: null,
+      address: emptyAddress,
       storeId: null,
       storeName: null,
       service: 'delivery',
       lines: [],
 
       setContext: (propertyCode, service) => {
-        const prev = get().propertyCode
+        const { propertyCode: prev, storeSlug } = get()
         // A different property means a different address — never carry a cart across.
-        if (prev && prev !== propertyCode) {
-          set({ propertyCode, service, storeId: null, storeName: null, lines: [] })
+        // Arriving from a store link is the same kind of switch.
+        if ((prev && prev !== propertyCode) || storeSlug) {
+          set({ propertyCode, storeSlug: null, service, storeId: null, storeName: null, lines: [] })
         } else {
           set({ propertyCode, service })
         }
       },
+
+      setStoreContext: (slug, service) => {
+        const { storeSlug: prev, propertyCode } = get()
+        if ((prev && prev !== slug) || propertyCode) {
+          set({ storeSlug: slug, propertyCode: null, service, storeId: null, storeName: null, lines: [] })
+        } else {
+          set({ storeSlug: slug, service })
+        }
+      },
+
+      setAddress: (address) => set({ address }),
 
       setService: (service) => set({ service }),
 

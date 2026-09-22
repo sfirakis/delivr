@@ -3,7 +3,7 @@
  * Supabase is unreachable from this sandbox, so every REST/RPC call is
  * intercepted and answered with payloads shaped exactly like the real ones.
  */
-import { chromium } from 'playwright'
+import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
@@ -43,14 +43,16 @@ const ITEMS = [
   { id: 'i1', category_id: 'c1', name: 'Πίτα γύρο χοιρινό', description: 'Πατάτες, ντομάτα, τζατζίκι',
     price: 4.2, image_url: null, emoji: '🌯', is_available: true, is_popular: true, is_vegan: false,
     is_vegetarian: false, is_gluten_free: false, allergens: [], sort_order: 1,
-    modifier_groups: [{ id: 'g1', name: 'Extras', is_required: false, min_select: 0, max_select: 5,
-      modifiers: [
-        { id: 'm1', name: 'Έξτρα τζατζίκι', price: 0.5, is_default: false },
-        { id: 'm2', name: 'Χωρίς κρεμμύδι', price: 0, is_default: false },
+    // The shape PostgREST returns: getStoreMenu() renames these itself.
+    item_modifier_groups: [{ id: 'g1', name: 'Extras', is_required: false, min_select: 0, max_select: 5,
+      sort_order: 1,
+      item_modifiers: [
+        { id: 'm1', name: 'Έξτρα τζατζίκι', price: 0.5, is_default: false, sort_order: 1 },
+        { id: 'm2', name: 'Χωρίς κρεμμύδι', price: 0, is_default: false, sort_order: 2 },
       ] }] },
   { id: 'i2', category_id: 'c2', name: 'Πατάτες τηγανητές', description: 'Φρέσκιες, με ρίγανη',
     price: 3.5, image_url: null, emoji: '🍟', is_available: true, is_popular: true, is_vegan: false,
-    is_vegetarian: true, is_gluten_free: false, allergens: [], sort_order: 7, modifier_groups: [] },
+    is_vegetarian: true, is_gluten_free: false, allergens: [], sort_order: 7, item_modifier_groups: [] },
 ]
 
 const SETTINGS = {
@@ -88,7 +90,7 @@ function orderStatus(status = 'pending') {
 }
 
 const errors = []
-const browser = await chromium.launch({
+const browser = await launchChromium({
   executablePath: '/opt/pw-browsers/chromium',
   proxy: { server: process.env.HTTPS_PROXY || 'http://127.0.0.1:35779', bypass: 'localhost,127.0.0.1,::1' },
 })
@@ -237,7 +239,9 @@ await step('Dropping below the minimum blocks checkout', async () => {
   for (let i = 0; i < 3; i++) { await minus.click(); await page.waitForTimeout(120) }
   await page.waitForTimeout(300)
   const body = await page.locator('body').innerText()
-  if (!body.includes('Ελάχιστη παραγγελία')) throw new Error('minimum-order warning not shown at 4.70 < 18')
+  // The warning reads «Πρόσθεσε … για να φτάσεις την ελάχιστη παραγγελία (…)»,
+  // so match the phrase as it is written, not as a title.
+  if (!body.includes('ελάχιστη παραγγελία')) throw new Error('minimum-order warning not shown at 4.70 < 18')
   if (!(await page.getByRole('button', { name: /Ολοκλήρωση παραγγελίας/ }).isDisabled())) {
     throw new Error('checkout should be disabled below the minimum')
   }

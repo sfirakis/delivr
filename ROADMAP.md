@@ -28,12 +28,24 @@ tokenized σελίδα χωρίς login. Έσοδα: προμήθεια πλατ
   τηλέφωνα, favicon/OG/robots, conversion pack (σύνολο στο cart bar, progress
   ελαχίστου, free-delivery upsell, promo field, items στο checkout), /terms.
 
+- ✅ **Standalone stores (2026-09-22)**: κάθε κατάστημα μπορεί να πουληθεί
+  μόνο του, χωρίς δικά μας καταλύματα. Δημόσιος σύνδεσμος `/store/<slug>`,
+  ο πελάτης διαλέγει περιοχή (ζώνη) και γράφει τη διεύθυνσή του, η
+  `delivr_place_order` δέχεται ad-hoc διεύθυνση όταν το κατάστημα έχει
+  `standalone_enabled` (migrations 012/013, applied live). Η προμήθεια
+  χρεώνεται κανονικά· το `orders.channel = 'store'` ξεχωρίζει τον τζίρο.
+- ✅ **Unblocked (2026-09-22)**: admin (`sfirakis@gmail.com`) + σύνδεση
+  καταστήματος (`demo@delivr.app` → Souvlaki Corner) στο live, οι δύο
+  εκκρεμείς διορθώσεις (διπλή περιοχή στη διεύθυνση, λευκή σελίδα χωρίς env)
+  rebased πάνω στο master.
+
 ## Εκκρεμή (owner)
 
+- ⬜ **Edge secrets: `RESEND_API_KEY` + `RESEND_FROM`** — το μόνο που μένει
+  για να φύγει πραγματικό email. Χωρίς αυτά κάθε παραγγελία γράφει
+  `email: skipped` στο `order_dispatch_log` (0 απεσταλμένα ως τώρα).
+  Supabase → Edge Functions → Secrets.
 - ⬜ Έγκριση διαγραφής των 6 σκουπιδο-καταστημάτων Αθήνας (mojibake seed).
-- ⬜ Εγγραφή στο /auth → προαγωγή σε admin (0 admins σήμερα).
-- ⬜ Edge secrets: `RESEND_API_KEY` + `RESEND_FROM` → πρώτη πραγματική
-  δοκιμαστική παραγγελία για απόδειξη email (`order_dispatch_log` = 0 ως τώρα).
 - ⬜ Πραγματικά `order_email` στα καταστήματα (τώρα *@example.com).
 
 ## Backlog (μετά το go-live)
@@ -46,6 +58,9 @@ tokenized σελίδα χωρίς login. Έσοδα: προμήθεια πλατ
 
 ## Log
 
+- 2026-09-22: Standalone store links (/store/<slug>), ad-hoc διευθύνσεις,
+  admin + store user στο live, e2e 37/37, migrations 011a/011b καταγράφηκαν
+  στο repo (ήταν μόνο στη βάση).
 - 2026-09-12: QA campaign + security 011a/011b + docs επιτέλους committed.
 - 2026-08-25: Full rebuild merged (QR-per-property, subscriptions, stats).
 - 2026-09-06: Τοπικό repo επανασυνδέθηκε στο GitHub ιστορικό (το .git είχε χαθεί).

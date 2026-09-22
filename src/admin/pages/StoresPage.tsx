@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
 import {
   useAdminStores, useUpsertStore, useDeleteStore,
@@ -23,7 +24,7 @@ const emptyStore: Partial<AdminStore> = {
   supports_delivery: true, supports_takeaway: true, accepts_cash: true, accepts_online: false,
   auto_accept: false, notify_email: true, notify_whatsapp: true,
   billing_mode: 'inherit', billing_value: 0, onboarding_status: 'active',
-  is_open: true, is_active: true, is_promoted: false,
+  is_open: true, is_active: true, is_promoted: false, standalone_enabled: false,
 }
 
 const slugify = (s: string) =>
@@ -139,10 +140,74 @@ function ZonesEditor({ storeId }: { storeId: string }) {
   )
 }
 
+// ── A store's own ordering link ──────────────────────────────
+function StandaloneTab({ form, set }: {
+  form: Partial<AdminStore>; set: (patch: Partial<AdminStore>) => void
+}) {
+  const [qr, setQr] = useState('')
+  const slug = form.slug || slugify(form.name ?? '')
+  const url = `${(import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '')}/store/${slug}`
+
+  useEffect(() => {
+    if (!form.standalone_enabled) { setQr(''); return }
+    void QRCode.toDataURL(url, { width: 900, margin: 1, errorCorrectionLevel: 'M' })
+      .then(setQr).catch(() => setQr(''))
+  }, [url, form.standalone_enabled])
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-ink-2">
+        Με αυτό ενεργό, το κατάστημα δέχεται παραγγελίες και <strong>χωρίς QR καταλύματος</strong>:
+        ο πελάτης ανοίγει τον σύνδεσμο, γράφει μόνος του τη διεύθυνσή του και η ζώνη ελέγχεται
+        από την περιοχή που θα διαλέξει. Έτσι πουλάμε την πλατφόρμα σε μαγαζιά που δεν
+        γειτονεύουν με δικά μας ακίνητα — η προμήθεια χρεώνεται κανονικά.
+      </p>
+
+      <CheckRow label="Ενεργός δικός του σύνδεσμος παραγγελιών"
+                hint="Χωρίς αυτό, ο σύνδεσμος επιστρέφει «μη διαθέσιμο»"
+                checked={form.standalone_enabled ?? false}
+                onChange={v => set({ standalone_enabled: v })} />
+
+      <Field label="Μήνυμα καλωσορίσματος" hint="Εμφανίζεται κάτω από το όνομα στη σελίδα του καταστήματος">
+        <TextArea rows={2} value={form.standalone_intro ?? ''}
+                  onChange={e => set({ standalone_intro: e.target.value })} />
+      </Field>
+
+      {form.standalone_enabled && (
+        <div className="border border-surface-4 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center">
+          {qr
+            ? <img src={qr} alt={`QR ${slug}`} className="w-40 h-40" />
+            : <div className="w-40 h-40 flex items-center justify-center"><Spinner /></div>}
+          <div className="flex-1 min-w-0 space-y-2">
+            <p className="text-xs text-ink-3 break-all">{url}</p>
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-secondary btn-md"
+                      onClick={() => { void navigator.clipboard.writeText(url); toast.success('Ο σύνδεσμος αντιγράφηκε') }}>
+                📋 Αντιγραφή συνδέσμου
+              </button>
+              <a className="btn btn-secondary btn-md" href={url} target="_blank" rel="noreferrer">
+                ↗ Άνοιγμα
+              </a>
+              {qr && (
+                <a className="btn btn-secondary btn-md" href={qr} download={`qr-${slug}.png`}>
+                  ⬇ Λήψη QR
+                </a>
+              )}
+            </div>
+            <p className="text-[11px] text-ink-3">
+              Ο σύνδεσμος δουλεύει αφού πατηθεί «Αποθήκευση».
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Store editor ─────────────────────────────────────────────
 function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: () => void }) {
   const [form, setForm] = useState<Partial<AdminStore>>(store)
-  const [tab, setTab] = useState<'basic' | 'delivery' | 'billing' | 'zones'>('basic')
+  const [tab, setTab] = useState<'basic' | 'delivery' | 'billing' | 'zones' | 'link'>('basic')
   const [menuOpen, setMenuOpen] = useState(false)
   const upsert = useUpsertStore()
   const set = (patch: Partial<AdminStore>) => setForm(f => ({ ...f, ...patch }))
@@ -158,6 +223,7 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
   const tabs = [
     ['basic', 'Στοιχεία'], ['delivery', 'Delivery & Take away'],
     ['billing', 'Χρέωση & ειδοποιήσεις'], ['zones', 'Ζώνες'],
+    ['link', 'Δικός του σύνδεσμος'],
   ] as const
 
   return (
@@ -165,7 +231,7 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
       <div className="flex gap-1 border-b border-surface-4 mb-4 overflow-x-auto">
         {tabs.map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)}
-            disabled={id === 'zones' && !form.id}
+            disabled={(id === 'zones' || id === 'link') && !form.id}
             className={`px-3.5 py-2 text-sm font-semibold whitespace-nowrap border-b-2 transition disabled:opacity-40
               ${tab === id ? 'border-brand text-brand' : 'border-transparent text-ink-2'}`}>
             {label}
@@ -333,6 +399,10 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
       )}
 
       {tab === 'zones' && form.id && <ZonesEditor storeId={form.id} />}
+
+      {tab === 'link' && form.id && (
+        <StandaloneTab form={form} set={set} />
+      )}
 
       <div className="flex gap-2 justify-end mt-5 border-t border-surface-4 pt-4">
         <button className="btn btn-secondary btn-md" onClick={onClose}>Άκυρο</button>

@@ -66,6 +66,16 @@ function foldAccents(t: string): string {
 }
 
 /**
+ * True when two place names are the same word, give or take accents, case and
+ * spacing — «ΕΛΟΥΝΤΑ», «Ελούντα» and «elounda» all name the same village.
+ */
+export function foldMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const left = foldAccents(a ?? '')
+  const right = foldAccents(b ?? '')
+  return left !== '' && left === right
+}
+
+/**
  * Builds one address line from parts, skipping anything the address already says.
  *
  * Operators type the street however they like — some include the area, some
