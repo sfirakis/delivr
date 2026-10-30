@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { merchantSetOrderStatus, getStoreOrder, type StoreOrderView } from '@/lib/api'
 import { money, dateTime, relativeMinutes, phoneE164, num, fullAddress } from '@/lib/format'
+import { paymentIcon, paymentLabel } from '@/lib/payment'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatusChip } from '@/admin/ui'
 import PrintTicket from '@/storefront/PrintTicket'
@@ -143,7 +144,9 @@ function OrderCard({ order, onAction, busy, onPrint }: {
       )}
 
       <div className="flex flex-wrap gap-2 text-xs text-ink-2 mb-3">
-        <span>💶 {order.payment_method === 'cash' ? 'Μετρητά' : order.payment_method}</span>
+        <span className={order.payment_method === 'card' ? 'font-bold text-ink-1' : ''} data-testid="pos-payment">
+          {paymentIcon(order.payment_method)} {paymentLabel(order.payment_method, order.delivery_type)}
+        </span>
         {num(order.delivery_fee) > 0 && <span>· 🛵 {money(order.delivery_fee)}</span>}
         {num(order.discount_amount) > 0 && <span>· 🎟 −{money(order.discount_amount)}</span>}
       </div>

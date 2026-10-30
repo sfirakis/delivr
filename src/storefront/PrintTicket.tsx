@@ -1,6 +1,7 @@
 import type { StoreOrderView } from '@/lib/api'
 import { money, dateTime, fullAddress } from '@/lib/format'
 import type { Lang } from '@/lib/i18n'
+import { paymentLabel } from '@/lib/payment'
 
 /**
  * 80mm thermal receipt. Hidden on screen, laid out for print only.
@@ -73,7 +74,7 @@ export default function PrintTicket({ order, lang = 'el' }: { order: StoreOrderV
       </div>
       <div className="pt-row pt-bold">
         <span>{el ? 'Πληρωμή' : 'Payment'}</span>
-        <span>{order.payment_method === 'cash' ? (el ? 'ΜΕΤΡΗΤΑ' : 'CASH') : order.payment_method.toUpperCase()}</span>
+        <span>{paymentLabel(order.payment_method, order.service, lang).toLocaleUpperCase(el ? 'el-GR' : 'en-GB')}</span>
       </div>
 
       {(order.customer_notes || order.delivery_notes) && (

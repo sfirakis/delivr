@@ -13,6 +13,8 @@ import { useShop } from '@/shop/useShop'
 import { useShopMode } from '@/shop/shopMode'
 import AddressFields from '@/shop/AddressFields'
 import { rememberOrder } from '@/market/myOrders'
+import PaymentChoice from '@/components/PaymentChoice'
+import type { PayMethod } from '@/lib/payment'
 
 const GUEST_KEY = 'delivr_guest_details'
 
@@ -29,6 +31,7 @@ export default function ShopCheckoutPage() {
   const [notes, setNotes] = useState('')
   const [promo, setPromo] = useState('')
   const [promoError, setPromoError] = useState<string | null>(null)
+  const [payment, setPayment] = useState<PayMethod>('cash')
   const [submitting, setSubmitting] = useState(false)
   // A ref, not state: the cart clears synchronously and the guard must already be up.
   const submittedRef = useRef(false)
@@ -78,7 +81,7 @@ export default function ShopCheckoutPage() {
           delivery_notes: service === 'delivery' ? address.notes.trim() || null : null,
         },
         promo: promo.trim().toUpperCase() || null,
-        payment: 'cash',
+        payment,
         channel,
         address: service === 'delivery' ? {
           street: address.street.trim(),
@@ -177,25 +180,8 @@ export default function ShopCheckoutPage() {
           </div>
         </div>
 
-        {/* Payment */}
-        <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4">
-          <p className="text-[11px] uppercase tracking-wide text-ink-3 font-semibold mb-2">
-            {t('checkout.payment')}
-          </p>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-brand bg-brand-50">
-            <input type="radio" checked readOnly className="accent-brand w-4 h-4" />
-            <span className="flex-1 text-sm font-semibold text-ink-1">
-              💶 {service === 'delivery' ? t('checkout.cash') : t('checkout.cashPickup')}
-            </span>
-          </div>
-          {!settings?.allow_online_payment && (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-surface-4 mt-2 opacity-60">
-              <input type="radio" disabled className="w-4 h-4" />
-              <span className="flex-1 text-sm text-ink-2">💳 {t('checkout.card')}</span>
-              <span className="badge badge-gray">{t('checkout.cardSoon')}</span>
-            </div>
-          )}
-        </div>
+        {/* Payment — in person, straight to the store (018) */}
+        <PaymentChoice storeId={storeId} service={service} value={payment} onChange={setPayment} />
 
         {/* Promo code */}
         <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4">

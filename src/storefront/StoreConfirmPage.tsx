@@ -6,6 +6,7 @@ import { getStoreOrder, storeAction, ApiError } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { money, dateTime, time, phoneE164, phoneWa, relativeMinutes, fullAddress } from '@/lib/format'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
+import { paymentIcon, paymentLabel } from '@/lib/payment'
 import { Spinner, EmptyState } from '@/components/ui'
 import PrintTicket from './PrintTicket'
 
@@ -136,9 +137,10 @@ export default function StoreConfirmPage() {
           </div>
           <div className="bg-surface-1 border border-surface-4 rounded-2xl p-3 text-center">
             <p className="text-[11px] text-ink-3 font-semibold uppercase">{el ? 'Πληρωμή' : 'Payment'}</p>
-            <p className="font-display font-bold text-base">
-              {o.payment_method === 'cash' ? `💶 ${el ? 'Μετρητά' : 'Cash'}` : o.payment_method}
+            <p className="font-display font-bold text-base" data-testid="store-payment">
+              {paymentIcon(o.payment_method)} {paymentLabel(o.payment_method, o.service, lang, true)}
             </p>
+            <p className="text-[11px] text-ink-3">{paymentLabel(o.payment_method, o.service, lang)}</p>
           </div>
         </div>
 
