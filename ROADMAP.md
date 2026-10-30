@@ -27,13 +27,20 @@
     «by ActionWeb».
   - ✅ e2e: guest 12/12, shop 10/10, store-confirm 7/7, admin 8/8,
     market 11/11, join 7/7.
-  - ⬜ **Go-live (θέλει OK George):** 014→015 στο live **πριν** το deploy →
-    merge → Vercel → άναμμα marketplace στα μαγαζιά από admin. Αποφάσεις:
-    χειροκίνητη/αυτόματη έγκριση, δημόσια προμήθεια στο `/join`, email
-    confirmation στο Supabase Auth.
-  - ⚠️ Βρέθηκε (προϋπήρχε): το merchant POS ενημερώνει `orders` απευθείας —
-    μπλοκαρισμένο από την 011a, άρα οι αλλαγές κατάστασης από `/merchant`
-    μάλλον αποτυγχάνουν (το `/s/<token>` δουλεύει). Θέλει RPC.
+  - ✅ POS μέσω RPC (migration 016 `delivr_merchant_set_order_status`:
+    μέλος καταστήματος + επιτρεπτά βήματα), DB 17/17, e2e merchant-pos 7/7.
+  - ⬜ **Go-live (θέλει OK George):** 014 → 015 → 016 στο live **πριν** το
+    deploy → merge → Vercel → έλεγχος deploy (`/`, `/qr/<κωδικός>`, POS,
+    `/join`) → άναμμα marketplace στα μαγαζιά από admin.
+  - Αποφάσεις, *προεπιλογή HQ — αλλάζει αν πει ο George*:
+    - χειροκίνητη έγκριση νέων μαγαζιών;
+    - η προμήθεια πλατφόρμας ΔΕΝ φαίνεται στο `/join`, μόνο οι τιμές των
+      πακέτων;
+    - η επιβεβαίωση email στο Supabase Auth μένει όπως είναι στο live
+      (καμία αλλαγή).
+  - ⚠️ Προϋπήρχε: το `/driver` γράφει απευθείας στα `orders`, κάτι
+    μπλοκαρισμένο από την 011a. Οι ενέργειες του διανομέα μάλλον
+    αποτυγχάνουν στο live· θέλει driver RPC + απόφαση για την ανάθεση.
 
 ## Status (2026-09-12)
 
@@ -90,7 +97,7 @@
 - 2026-10-30: Απόφαση George — δύο γραμμές προϊόντος (Delivr Stores
   marketplace+SaaS / Delivr QR). Branch `feat/open-marketplace`: migrations
   014/015 (όχι ακόμα live), marketplace + self-signup + admin έγκριση,
-  λογότυπο by ActionWeb, e2e 55/55 + DB 23/23.
+  λογότυπο by ActionWeb, POS μέσω RPC (016), e2e 62/62 + DB 41/41.
 - 2026-09-22: Standalone store links (/store/<slug>), ad-hoc διευθύνσεις,
   admin + store user στο live, e2e 37/37, migrations 011a/011b καταγράφηκαν
   στο repo (ήταν μόνο στη βάση).

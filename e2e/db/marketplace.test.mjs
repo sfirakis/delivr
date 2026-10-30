@@ -119,6 +119,14 @@ await step('Plans are readable by anon', async () => {
   const r = await as(db, 'anon', null, () => one(db, `SELECT delivr_public_plans() AS j`))
   assert(r.j.default && Array.isArray(r.j.plans), JSON.stringify(r.j))
 })
+await step('Plans publish prices only — no platform commission (HQ default)', async () => {
+  await db.exec(`INSERT INTO subscription_plans (name, audience, price, commission_mode, commission_value, is_active)
+                 VALUES ('Pro', 'store', 29, 'commission', 6, true)`)
+  const r = await as(db, 'anon', null, () => one(db, `SELECT delivr_public_plans() AS j`))
+  const txt = JSON.stringify(r.j)
+  assert(r.j.plans.some(p => p.name === 'Pro' && Number(p.price) === 29), txt)
+  assert(!/commission|billing_value|"mode"|"value"/.test(txt), 'commission leaked: ' + txt)
+})
 
 // ── 4. Shop self sign-up ───────────────────────────────────────────────────
 const payload = JSON.stringify({

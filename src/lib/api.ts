@@ -226,6 +226,8 @@ const KNOWN_CODES = [
   'PROMO_INVALID', 'PROMO_EXPIRED', 'PROMO_MIN_ORDER', 'PROMO_LIMIT',
   // Delivr Stores (marketplace) — migration 014/015
   'ALREADY_REGISTERED', 'AUTH_REQUIRED', 'CITY_REQUIRED', 'SERVICE_REQUIRED', 'ADMIN_ONLY_FIELD',
+  // Merchant POS — migration 016
+  'BAD_TRANSITION', 'FORBIDDEN',
 ]
 
 function toApiError(error: { message?: string } | null): ApiError {
@@ -312,13 +314,12 @@ export interface PublicPlan {
   price: number
   billing_cycle: 'month' | 'year'
   trial_days: number
-  commission_mode: 'none' | 'flat' | 'commission' | null
-  commission_value: number | null
   features: string[]
 }
 
 export interface PublicPlans {
-  default: { mode: 'none' | 'flat' | 'commission'; value: number; auto_approve: boolean } | null
+  // Plan prices only — the platform commission is not published.
+  default: { auto_approve: boolean } | null
   plans: PublicPlan[]
 }
 
@@ -387,6 +388,17 @@ export const getStoreOrder = (token: string) =>
 export const storeAction = (token: string, action: string, prepMinutes?: number, reason?: string) =>
   rpc<{ ok: boolean; status: string; prep_minutes: number | null }>('delivr_store_action', {
     p_token: token, p_action: action,
+    p_prep_minutes: prepMinutes ?? null, p_reason: reason ?? null,
+  })
+
+/**
+ * Merchant POS (signed in): move an order along the store's state machine.
+ * Checked server-side: caller is staff of the order's store (or admin) and
+ * the step is allowed from the current status (migration 016).
+ */
+export const merchantSetOrderStatus = (orderId: string, action: string, prepMinutes?: number, reason?: string) =>
+  rpc<{ ok: boolean; status: string; prep_minutes: number | null; printed?: boolean }>('delivr_merchant_set_order_status', {
+    p_order_id: orderId, p_action: action,
     p_prep_minutes: prepMinutes ?? null, p_reason: reason ?? null,
   })
 

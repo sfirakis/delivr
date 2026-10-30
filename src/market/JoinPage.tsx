@@ -67,12 +67,6 @@ function planPrice(p: PublicPlan) {
   if (num(p.price) === 0) return 'Δωρεάν'
   return `${money(p.price)}/${p.billing_cycle === 'year' ? 'έτος' : 'μήνα'}`
 }
-function planCommission(mode: string | null | undefined, value: number | null | undefined) {
-  if (mode === 'commission') return `${num(value)}% ανά παραγγελία`
-  if (mode === 'flat') return `${money(value ?? 0)} ανά παραγγελία`
-  if (mode === 'none') return 'χωρίς προμήθεια'
-  return null
-}
 
 export default function JoinPage() {
   const navigate = useNavigate()
@@ -96,7 +90,6 @@ export default function JoinPage() {
   useEffect(() => { if (!done) saveDraft({ shop, planId }) }, [shop, planId, done])
 
   const plans = useMemo(() => plansQ.data?.plans ?? [], [plansQ.data])
-  const def = plansQ.data?.default
   useEffect(() => {
     if (!planId && plans.length > 0) setPlanId(plans[0].id)
   }, [plans, planId])
@@ -203,7 +196,7 @@ export default function JoinPage() {
             <div className="bg-surface-1 border-2 border-brand rounded-2xl p-4">
               <p className="font-semibold">Χωρίς πάγιο</p>
               <p className="text-sm text-ink-2">
-                {planCommission(def?.mode, def?.value) ?? 'Οι όροι συμφωνούνται με την ομάδα μας'}
+                Οι όροι συμφωνούνται με την ομάδα μας
               </p>
             </div>
           )}
@@ -217,8 +210,7 @@ export default function JoinPage() {
                   <p className="font-display font-black text-brand whitespace-nowrap">{planPrice(p)}</p>
                 </div>
                 <p className="text-xs text-ink-2 mt-1">
-                  {[planCommission(p.commission_mode ?? def?.mode, p.commission_value ?? def?.value),
-                    p.trial_days > 0 ? `${p.trial_days} μέρες δωρεάν δοκιμή` : null,
+                  {[p.trial_days > 0 ? `${p.trial_days} μέρες δωρεάν δοκιμή` : null,
                     p.description].filter(Boolean).join(' · ')}
                 </p>
               </button>

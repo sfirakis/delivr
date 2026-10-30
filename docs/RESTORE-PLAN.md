@@ -93,6 +93,17 @@
 merchant, admin, login, όροι). Το favicon και η εικόνα κοινοποίησης έμειναν
 ίδια.
 
+**Φάση 5 — POS καταστήματος μέσω ασφαλούς RPC (migration 016)**
+- Το POS στο `/merchant` αλλάζει πλέον την κατάσταση της παραγγελίας μέσω
+  της `delivr_merchant_set_order_status`. Ο server ελέγχει δύο πράγματα:
+  - ότι ο χρήστης δουλεύει σε αυτό το μαγαζί (ή είναι admin);
+  - ότι το βήμα επιτρέπεται: αποδοχή → ετοιμασία → έτοιμη → έφυγε →
+    παραδόθηκε, ή για take away: έτοιμη → παραλήφθηκε.
+- Αν δύο συσκευές πατήσουν μαζί, η δεύτερη βλέπει «η παραγγελία έχει ήδη
+  αλλάξει κατάσταση» και η λίστα ανανεώνεται.
+- Σβήστηκε το αχρησιμοποίητο `merchantStore.ts`, που έγραφε κατευθείαν
+  στον πίνακα.
+
 **Αργότερα (θέλει δική σου απόφαση):**
 - λογαριασμοί πελατών και αγαπημένα;
 - online πληρωμές (Stripe/Viva);
@@ -104,35 +115,46 @@ Screenshots (πλάτος κινητού) στο `docs/screenshots/`:
 - `market-m-01…09` — ο πελάτης;
 - `join-m-01…04` — η εγγραφή μαγαζιού;
 - `merchant-m-01/02` — το μαγαζί σε αναμονή;
+- `merchant-m-03-pos-pending` — το POS με νέα παραγγελία;
 - `admin-01-pending-approval` — η έγκριση;
 - `guest-m-01-qr-store-list-logo` — το QR με το νέο λογότυπο.
 
 ## 4. Τι θέλει το OK σου για να βγει live
 
-1. **Εφαρμογή των migrations 014 + 015 στη live βάση.** Πρέπει να γίνει
-   **πριν** το deploy, αλλιώς η νέα αρχική θα δείχνει «δεν υπάρχουν
-   καταστήματα ακόμα». Είναι μόνο προσθήκες, οπότε το QR δεν επηρεάζεται.
-2. **Έγκριση νέων μαγαζιών:** χειροκίνητη από σένα (προεπιλογή) ή αυτόματη
-   (`marketplace_auto_approve`).
+1. **Εφαρμογή των migrations 014 → 015 → 016 στη live βάση**, με αυτή τη
+   σειρά.
+   - Πρέπει να γίνει **πριν** το deploy. Αλλιώς η νέα αρχική δείχνει «δεν
+     υπάρχουν καταστήματα ακόμα» και το POS δεν μπορεί να αλλάξει κατάσταση.
+   - Είναι μόνο προσθήκες, οπότε το QR δεν επηρεάζεται.
+2. **Merge του PR και deploy στο Vercel**, και μετά γρήγορος έλεγχος.
 3. **Ποια από τα υπάρχοντα μαγαζιά να μπουν στο marketplace.** Προεπιλογή:
    κανένα, μέχρι να το ανοίξεις από το admin («Σύνδεσμος & Marketplace»).
-4. **Η βασική προμήθεια φαίνεται δημόσια** στη σελίδα `/join`, μαζί με τα
-   πακέτα. Είναι ΟΚ;
-5. **Supabase Auth:** να ζητά επιβεβαίωση email στην εγγραφή μαγαζιού ή όχι;
-   Η φόρμα δουλεύει και με τα δύο.
-6. **Η αρχική αλλάζει:** το `/` γίνεται marketplace και η σελίδα για
+4. **Η αρχική αλλάζει:** το `/` γίνεται marketplace και η σελίδα για
    καταλύματα πάει στο `/qr`. Τα QR των δωματίων (`/qr/<κωδικός>`) δεν
    αλλάζουν.
-7. **Merge του PR και deploy στο Vercel.**
 
-## 5. Γνωστό θέμα που βρέθηκε (υπήρχε από πριν)
+**Αποφάσεις με προεπιλογή HQ** (*προεπιλογή HQ — αλλάζει αν πει ο George*):
 
-Το POS στο `/merchant` αλλάζει την κατάσταση της παραγγελίας γράφοντας
-κατευθείαν στον πίνακα. Από τις 12/9 (011a) η βάση το απαγορεύει, οπότε
-πιθανότατα **η αλλαγή κατάστασης από το merchant POS δεν δουλεύει** στο live.
+| Θέμα | Προεπιλογή HQ | Πώς αλλάζει |
+|---|---|---|
+| Έγκριση νέων μαγαζιών | **Χειροκίνητη** από τον admin | `platform_settings.marketplace_auto_approve = true` |
+| Προμήθεια πλατφόρμας στο `/join` | **ΔΕΝ φαίνεται δημόσια.** Φαίνονται μόνο οι τιμές των πακέτων. Η `delivr_public_plans` δεν στέλνει καν ποσοστά. | Αλλαγή στην 014 + στο `JoinPage` |
+| Επιβεβαίωση email (Supabase Auth) | **Μένει ακριβώς όπως είναι σήμερα στο live**, χωρίς αλλαγή. Η φόρμα δουλεύει και με τις δύο ρυθμίσεις. | Supabase → Auth → Email |
 
-Η επιβεβαίωση από τον σύνδεσμο `/s/<token>` δουλεύει κανονικά. Δεν το
-άγγιξα (εκτός scope). Θέλει μικρό RPC σε επόμενο βήμα.
+## 5. Γνωστά θέματα (υπήρχαν από πριν)
+
+- **Διόρθωση της προηγούμενης αναφοράς:** το POS δεν ήταν χαλασμένο.
+  Άλλαζε την κατάσταση με το token της παραγγελίας (`delivr_store_action`).
+  Αυτό που έγραφε κατευθείαν στον πίνακα ήταν το αχρησιμοποίητο
+  `merchantStore.ts`. Η 016 κάνει το POS να περνά από έλεγχο χρήστη και
+  βημάτων, και σβήνει τον «νεκρό» κώδικα.
+- **Η εφαρμογή διανομέα (`/driver`)**:
+  - Γράφει κατευθείαν στα `orders` (ανάθεση σε οδηγό, «παραλήφθηκε»,
+    «παραδόθηκε»).
+  - Η 011a το απαγορεύει, άρα **στο live οι αλλαγές από τον διανομέα
+    αποτυγχάνουν**.
+  - Θέλει αντίστοιχο RPC για τον driver. Δεν το έκανα: χρειάζεται απόφαση
+    για το ποιος οδηγός βλέπει και παίρνει ποια παραγγελία.
 
 ---
 
@@ -170,7 +192,7 @@ Screenshots (πλάτος κινητού) στο `docs/screenshots/`:
   - Κατάστημα χωρίς ζώνες ταιριάζει μόνο στη δική του πόλη.
   - ETA = `avg_delivery_time` + extra της ζώνης, όπως και στη σελίδα
     καταστήματος.
-- `delivr_public_plans()` → `{default:{mode,value,auto_approve}, plans}` (anon).
+- `delivr_public_plans()` → `{default:{auto_approve}, plans:[{id,name,description,price,billing_cycle,trial_days,features}]}` (anon). **Χωρίς** ποσοστά προμήθειας.
 - `delivr_register_store(p_store jsonb, p_plan_id uuid)`:
   - Μόνο για authenticated.
   - Σφάλματα: `AUTH_REQUIRED`, `ALREADY_REGISTERED`, `RATE_LIMIT` (30/ώρα),
@@ -189,16 +211,39 @@ Screenshots (πλάτος κινητού) στο `docs/screenshots/`:
   `billing_mode`, `billing_value`, `is_promoted`, `rating`, `review_count`,
   `slug`, `self_registered_at`.
 
+### RPC POS (migration 016)
+- `delivr_merchant_set_order_status(p_order_id, p_action, p_prep_minutes, p_reason)`:
+  - Δικαίωμα: μόνο authenticated (REVOKE από PUBLIC και anon).
+  - Έλεγχοι: `delivr_is_store_member(store)` ή admin, αλλιώς `FORBIDDEN`.
+  - Επιτρεπτά βήματα:
+
+    | Ενέργεια | Από κατάσταση |
+    |---|---|
+    | `accept` | pending |
+    | `reject` | pending, confirmed, preparing |
+    | `preparing` | confirmed |
+    | `ready` | confirmed, preparing |
+    | `on_the_way` | ready (μόνο delivery) |
+    | `delivered` | on_the_way, ή ready για take away |
+    | `print` | οποιαδήποτε ανοιχτή |
+
+    Οτιδήποτε άλλο → `BAD_TRANSITION`. Κλειστή παραγγελία → `ORDER_CLOSED`.
+  - Ίδιες παρενέργειες με τη `delivr_store_action`: ETA, timestamps, τα
+    μετρητά γίνονται paid στην παράδοση, και γράφεται `order_events`.
+- Το `/s/<token>` (`delivr_store_action`) μένει ως έχει.
+- Το trigger `on_order_status_change` της 002 **δεν υπάρχει στο live** (έλεγχος
+  `pg_trigger` 30/10). Το test DB το αφαιρεί για να καθρεφτίζει το live.
+
 ### Tests
 ```bash
 npm run lint && npx tsc --noEmit && npm run build
-npm run test:db          # PGlite: 001→015 + 014/015 ξανά (idempotent), 23 έλεγχοι
+npm run test:db          # PGlite: 001→016 (idempotent) — marketplace 24 + POS 17 έλεγχοι
 
 # e2e: dev server με ψεύτικο Supabase (όλα τα *.supabase.co γίνονται mock)
 VITE_SUPABASE_URL=https://e2etest.supabase.co VITE_SUPABASE_ANON_KEY=x \
   VITE_APP_URL=http://localhost:5174 npx vite --port 5174 --strictPort
 BASE_URL=http://localhost:5174 E2E_SUPABASE_REF=e2etest E2E_CHANNEL=msedge \
-  SHOTS_DIR=docs/screenshots npm run e2e   # όλα τα suites (guest, shop, store-confirm, admin, market, join)
+  SHOTS_DIR=docs/screenshots npm run e2e   # guest, shop, store-confirm, admin, market, join, merchant-pos
 ```
 - Το `E2E_CHANNEL=msedge` χρειάζεται σε Windows, όπου το bundled chromium
   δεν ξεκινά.
@@ -215,14 +260,24 @@ BASE_URL=http://localhost:5174 E2E_SUPABASE_REF=e2etest E2E_CHANNEL=msedge \
 | admin-dashboard | 8/8 |
 | **market-flow** | **11/11** |
 | **join-flow** | **7/7** |
-| DB | 23/23 |
+| **merchant-pos** | **7/7** |
+| DB marketplace | 24/24 |
+| **DB POS (016)** | **17/17** |
 | lint, tsc, build | πράσινα |
 
 ### Σειρά go-live
-1. `apply_migration` 014 → 015 στο `ifgzciraogohycuvujip`.
-2. Γρήγορος έλεγχος με `select delivr_marketplace_areas();`.
+1. `apply_migration` **014 → 015 → 016** στο `ifgzciraogohycuvujip`.
+2. Έλεγχος:
+   - `select delivr_marketplace_areas();`
+   - `select delivr_public_plans();` (χωρίς ποσοστά)
+   - η `has_function_privilege('anon', 'delivr_merchant_set_order_status(uuid,text,int,text)', 'execute')` πρέπει να δίνει `false`.
 3. Merge του PR → Vercel deploy.
-4. Από το admin: «Σύνδεσμος & Marketplace» → άναμμα των μαγαζιών που θες
+4. Έλεγχος του deploy:
+   - Το `/` δείχνει marketplace και το `/qr/<κωδικός>` δουλεύει όπως πριν.
+   - Στο `/merchant` το POS κάνει αποδοχή/ετοιμασία σε μια δοκιμαστική
+     παραγγελία.
+   - Το `/join` δείχνει μόνο τιμές πακέτων.
+5. Από το admin: «Σύνδεσμος & Marketplace» → άναμμα των μαγαζιών που θες
    να φαίνονται.
 
 Τα screenshots `public-*-root-landing.png` δείχνουν την παλιά αρχική (τώρα `/qr`).

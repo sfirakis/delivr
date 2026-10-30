@@ -157,14 +157,14 @@ END $$;
 CREATE OR REPLACE FUNCTION delivr_public_plans()
 RETURNS JSONB LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT jsonb_build_object(
-    'default', (SELECT jsonb_build_object('mode', ps.store_billing_mode, 'value', ps.store_billing_value,
-                                          'auto_approve', ps.marketplace_auto_approve)
+    -- Plan prices only: the platform commission is agreed with each shop and
+    -- is NOT published (HQ default 30/10/2026, changes only if George says so).
+    'default', (SELECT jsonb_build_object('auto_approve', ps.marketplace_auto_approve)
                   FROM platform_settings ps WHERE ps.id = 1),
     'plans', coalesce((
       SELECT jsonb_agg(jsonb_build_object(
                'id', p.id, 'name', p.name, 'description', p.description,
                'price', p.price, 'billing_cycle', p.billing_cycle, 'trial_days', p.trial_days,
-               'commission_mode', p.commission_mode, 'commission_value', p.commission_value,
                'features', p.features) ORDER BY p.sort_order, p.price)
         FROM subscription_plans p
        WHERE p.is_active AND p.audience = 'store'), '[]'::JSONB))

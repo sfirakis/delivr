@@ -16,12 +16,12 @@ const ADMIN_ID = '11111111-2222-3333-4444-555555555555'
 const STORE_ID = '7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 
 const PLANS = {
-  default: { mode: 'commission', value: 10, auto_approve: false },
+  default: { auto_approve: false },
   plans: [
     { id: 'p-basic', name: 'Basic', description: null, price: 0, billing_cycle: 'month', trial_days: 0,
-      commission_mode: 'commission', commission_value: 12, features: [] },
+      features: [] },
     { id: 'p-pro', name: 'Pro', description: 'Για μαγαζιά με σταθερό τζίρο', price: 29, billing_cycle: 'month',
-      trial_days: 30, commission_mode: 'commission', commission_value: 6, features: [] },
+      trial_days: 30, features: [] },
   ],
 }
 
@@ -132,10 +132,11 @@ const shot = async (page, name, fullPage = false) => {
     await page.getByText('Pro').first().waitFor()
     const b = await page.locator('body').innerText()
     if (!/29,00\s€\/μήνα/.test(b)) throw new Error('Pro price missing')
-    for (const s of ['by ActionWeb', 'Basic', '6% ανά παραγγελία', '30 μέρες δωρεάν δοκιμή', 'online πληρωμή έρχεται σύντομα']) {
+    for (const s of ['by ActionWeb', 'Basic', '30 μέρες δωρεάν δοκιμή', 'online πληρωμή έρχεται σύντομα']) {
       if (!b.includes(s)) throw new Error(`missing "${s}"`)
     }
     if (/Visa|PCI/.test(b)) throw new Error('fake payment claims are back')
+    if (/προμήθει|ανά παραγγελία|\d\s?%/.test(b)) throw new Error('platform commission is shown publicly')
   })
   await shot(page, 'join-m-01-offer')
 

@@ -40,6 +40,8 @@ npm run build                  # production build (πρέπει πάντα πρ�
 - Γράψιμο παραγγελιών ΜΟΝΟ μέσω `delivr_place_order` — τα orders/order_items
   είναι SELECT-only για clients (security 011a, 2026-09-12). Μην ξαναδώσεις
   ποτέ table-level INSERT/UPDATE σε authenticated.
+  Αλλαγές κατάστασης: `delivr_store_action` (token, `/s/<token>`) ή
+  `delivr_merchant_set_order_status` (POS, migration 016).
 - `profiles.role`/`loyalty_points` αλλάζουν ΜΟΝΟ από service role (011a).
 - Νέες SQL functions: πάντα `REVOKE EXECUTE ... FROM PUBLIC, anon` (το μάθημα
   των migrations 009/010 που ξανάνοιξαν ό,τι έκλεισε η 008).
