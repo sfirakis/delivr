@@ -11,6 +11,7 @@ import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { CartBar } from '@/guest/CartWidgets'
 import { Spinner, EmptyState, StarRating } from '@/components/ui'
+import DelivrLogo from '@/components/brand/DelivrLogo'
 
 const CATEGORY_EMOJI: Record<string, string> = {
   restaurant: '🍽️', cafe: '☕', burger: '🍔', pizza: '🍕', sushi: '🍣',
@@ -239,8 +240,8 @@ export default function PropertyHomePage() {
           />
         ))}
 
-        <p className="text-center text-[10px] text-ink-3 pt-4 pb-2">
-          {t('guest.poweredBy')} <span className="font-bold">Delivr</span>
+        <p className="flex items-center justify-center gap-1.5 text-[10px] text-ink-3 pt-4 pb-2">
+          {t('guest.poweredBy')} <DelivrLogo variant="full" size="xs" />
         </p>
       </div>
 

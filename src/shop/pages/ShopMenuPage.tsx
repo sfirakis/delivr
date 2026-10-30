@@ -10,10 +10,12 @@ import { CartBar, CartProgress } from '@/guest/CartWidgets'
 import { CategoryChips, ItemSheet, MenuSections, useGroupedMenu } from '@/guest/StoreMenu'
 import { Spinner, EmptyState } from '@/components/ui'
 import { useShop } from '@/shop/useShop'
+import { useShopMode } from '@/shop/shopMode'
 
 export default function ShopMenuPage() {
   const { slug = '' } = useParams()
   const navigate = useNavigate()
+  const { base, market } = useShopMode()
   const { t, lang } = useI18n()
   const { service, setService, setStoreContext, address, setAddress, count, subtotal } = useGuestCart()
   const [openItem, setOpenItem] = useState<PublicMenuItem | null>(null)
@@ -44,7 +46,9 @@ export default function ShopMenuPage() {
   if (storeQ.isError || !store) {
     return (
       <div className="h-full flex items-center justify-center p-6">
-        <EmptyState emoji="🔒" title={t('shop.notFound')} subtitle="" />
+        <EmptyState emoji="🔒" title={t('shop.notFound')} subtitle=""
+                    action={market ? t('shop.backToMarket') : undefined}
+                    onAction={market ? () => navigate('/') : undefined} />
       </div>
     )
   }
@@ -56,12 +60,16 @@ export default function ShopMenuPage() {
     <div className="h-full flex flex-col bg-surface-2">
       <div className="bg-surface-1 border-b border-surface-4 flex-shrink-0">
         <div className="flex items-start gap-3 px-4 pt-3">
+          {market && (
+            <button className="btn-icon flex-shrink-0" aria-label={t('shop.backToMarket')}
+                    onClick={() => navigate('/')}>←</button>
+          )}
           <div className="w-11 h-11 rounded-xl bg-surface-3 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
             {store.logo_url ? <img src={store.logo_url} alt="" className="w-full h-full object-cover" /> : '🏪'}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-display font-black text-lg leading-tight truncate">{store.name}</p>
-            <p className="text-[11px] text-ink-3 truncate">{t('shop.orderDirect')}</p>
+            <p className="font-display font-black text-lg leading-tight line-clamp-2 break-words">{store.name}</p>
+            <p className="text-[11px] text-ink-3 truncate">{t(market ? 'shop.viaMarket' : 'shop.orderDirect')}</p>
           </div>
           <LangToggle />
         </div>
@@ -152,7 +160,7 @@ export default function ShopMenuPage() {
           {areaUnserved
             ? <p className="px-4 pt-3 text-[11px] text-danger">{t('shop.notServed')}</p>
             : <CartProgress totals={totals} service={service} className="px-3 pt-3 border-t border-surface-4" />}
-          <CartBar count={cartCount} total={totals.total} onOpen={() => navigate(`/store/${slug}/cart`)} />
+          <CartBar count={cartCount} total={totals.total} onOpen={() => navigate(`${base}/cart`)} />
         </div>
       )}
 

@@ -9,6 +9,7 @@ import MerchantMenuPage from './pages/MenuPage'
 import MerchantAnalyticsPage from './pages/AnalyticsPage'
 import MerchantSettingsPage from './pages/SettingsPage'
 import HelpPage from '@/help/HelpPage'
+import DelivrLogo from '@/components/brand/DelivrLogo'
 
 type TabId = 'pos' | 'menu' | 'analytics' | 'settings' | 'help'
 
@@ -61,6 +62,7 @@ export default function MerchantApp() {
     <div className="dash-container px-4 md:px-6 py-4">
       <header className="no-print flex items-center justify-between gap-4 mb-4 flex-wrap">
         <div>
+          <DelivrLogo variant="full" size="xs" className="mb-1" />
           <h1 className="font-display font-black text-2xl text-ink-1">{store.name}</h1>
           <p className="text-xs text-ink-3">
             {store.is_open ? '🟢 Ανοιχτό' : '🔴 Κλειστό'} · {store.address}
@@ -78,6 +80,17 @@ export default function MerchantApp() {
           <button className="btn btn-ghost btn-md" onClick={() => { void signOut(); navigate('/auth') }}>Έξοδος</button>
         </div>
       </header>
+
+      {store.onboarding_status === 'pending' && (
+        <div className="no-print mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">⏳ Το κατάστημα περιμένει έγκριση από την ομάδα Delivr</p>
+          <p className="mt-1">
+            Στο μεταξύ ετοίμασέ το: <button className="underline font-semibold" onClick={() => setTab('menu')}>βάλε μενού</button>,
+            έλεγξε <button className="underline font-semibold" onClick={() => setTab('settings')}>ωράριο, ζώνες &amp; μεταφορικά</button>.
+            Μόλις εγκριθεί, εμφανίζεται στους πελάτες και δέχεται παραγγελίες.
+          </p>
+        </div>
+      )}
 
       <div className="no-print"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
 

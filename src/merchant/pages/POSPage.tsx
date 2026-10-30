@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
-import { storeAction, getStoreOrder, type StoreOrderView } from '@/lib/api'
+import { merchantSetOrderStatus, getStoreOrder, type StoreOrderView } from '@/lib/api'
 import { money, dateTime, relativeMinutes, phoneE164, num, fullAddress } from '@/lib/format'
 import { Spinner, EmptyState } from '@/components/ui'
 import { Card, StatusChip } from '@/admin/ui'
@@ -211,6 +211,13 @@ function OrderCard({ order, onAction, busy, onPrint }: {
   )
 }
 
+const POS_ERRORS: Record<string, string> = {
+  BAD_TRANSITION: 'Η παραγγελία έχει ήδη αλλάξει κατάσταση — ανανέωσε τη λίστα.',
+  ORDER_CLOSED: 'Η παραγγελία έχει κλείσει.',
+  FORBIDDEN: 'Η παραγγελία δεν ανήκει στο κατάστημά σου.',
+  AUTH_REQUIRED: 'Συνδέσου ξανά.',
+}
+
 export default function POSPage({ storeId }: { storeId: string }) {
   const qc = useQueryClient()
   const [soundOn, setSoundOn] = useState(true)
@@ -258,10 +265,14 @@ export default function POSPage({ storeId }: { storeId: string }) {
   }, [ordersQ.data, chime])
 
   const act = useMutation({
-    mutationFn: async (v: { token: string; action: string; prep?: number; reason?: string }) =>
-      storeAction(v.token, v.action, v.prep, v.reason),
+    // Signed-in RPC (016): checks store membership and the allowed next step.
+    mutationFn: async (v: { orderId: string; action: string; prep?: number; reason?: string }) =>
+      merchantSetOrderStatus(v.orderId, v.action, v.prep, v.reason),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['pos-orders', storeId] }) },
-    onError: (e) => toast.error((e as Error).message),
+    onError: (e) => {
+      toast.error(POS_ERRORS[(e as Error).message] ?? (e as Error).message)
+      void qc.invalidateQueries({ queryKey: ['pos-orders', storeId] })
+    },
   })
 
   const doPrint = async (order: PosOrder) => {
@@ -269,7 +280,7 @@ export default function POSPage({ storeId }: { storeId: string }) {
     try {
       const full = await getStoreOrder(order.store_token)
       setPrinting(full)
-      void storeAction(order.store_token, 'print')
+      void merchantSetOrderStatus(order.id, 'print')
       setTimeout(() => { window.print(); qc.invalidateQueries({ queryKey: ['pos-orders', storeId] }) }, 200)
     } catch (e) {
       toast.error((e as Error).message)
@@ -283,8 +294,7 @@ export default function POSPage({ storeId }: { storeId: string }) {
   const revenue = orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + num(o.total), 0)
 
   const handle = (order: PosOrder) => (action: string, prep?: number, reason?: string) => {
-    if (!order.store_token) { toast.error('Λείπει το token της παραγγελίας'); return }
-    act.mutate({ token: order.store_token, action, prep, reason })
+    act.mutate({ orderId: order.id, action, prep, reason })
   }
 
   if (ordersQ.isLoading) return <div className="py-16 flex justify-center"><Spinner size={30} /></div>

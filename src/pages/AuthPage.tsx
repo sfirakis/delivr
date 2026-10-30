@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/store/authStore'
 import { Spinner } from '@/components/ui'
+import DelivrLogo from '@/components/brand/DelivrLogo'
 import toast from 'react-hot-toast'
 
 export default function AuthPage() {
@@ -41,7 +42,7 @@ export default function AuthPage() {
     <div className="screen flex flex-col">
       {/* Hero */}
       <div className="bg-ink-1 px-8 pt-16 pb-10 flex-shrink-0">
-        <h1 className="font-display font-black text-5xl text-brand mb-2">delivr</h1>
+        <h1 className="mb-3"><DelivrLogo variant="full" tone="dark" size="lg" /></h1>
         <p className="text-ink-3 text-sm">
           {mode === 'signin' ? 'Καλώς ήρθες πίσω 👋' : 'Δημιούργησε λογαριασμό 🚀'}
         </p>

@@ -14,6 +14,7 @@ import SettingsPage from './pages/SettingsPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SubscriptionsPage from './pages/SubscriptionsPage'
 import HelpPage from '@/help/HelpPage'
+import DelivrLogo from '@/components/brand/DelivrLogo'
 
 type Tab = 'overview' | 'analytics' | 'orders' | 'stores' | 'properties' | 'billing' | 'subscriptions' | 'people' | 'settings' | 'help'
 
@@ -62,7 +63,10 @@ export default function AdminApp() {
     <div className="dash-container px-4 md:px-6 py-4">
       <header className="flex items-center justify-between gap-4 mb-4">
         <div>
-          <h1 className="font-display font-black text-2xl text-ink-1">Delivr — Διαχείριση</h1>
+          <h1 className="flex items-end gap-3">
+            <DelivrLogo variant="full" size="sm" />
+            <span className="font-display font-black text-2xl text-ink-1 leading-none">Διαχείριση</span>
+          </h1>
           <p className="text-xs text-ink-3">
             {profile?.full_name ? `Συνδεδεμένος ως ${profile.full_name}` : 'Master admin'}
           </p>

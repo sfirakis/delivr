@@ -10,13 +10,16 @@ import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { TotalsCard } from '@/guest/CartWidgets'
 import { Spinner } from '@/components/ui'
 import { useShop } from '@/shop/useShop'
+import { useShopMode } from '@/shop/shopMode'
 import AddressFields from '@/shop/AddressFields'
+import { rememberOrder } from '@/market/myOrders'
 
 const GUEST_KEY = 'delivr_guest_details'
 
 export default function ShopCheckoutPage() {
   const { slug = '' } = useParams()
   const navigate = useNavigate()
+  const { base, channel } = useShopMode()
   const { t, lang } = useI18n()
   const { lines, storeId, service, subtotal, clear, address, setAddress } = useGuestCart()
 
@@ -43,8 +46,8 @@ export default function ShopCheckoutPage() {
   }, [])
 
   useEffect(() => {
-    if (lines.length === 0 && !submittedRef.current) navigate(`/store/${slug}`, { replace: true })
-  }, [lines.length, slug, navigate])
+    if (lines.length === 0 && !submittedRef.current) navigate(`${base}`, { replace: true })
+  }, [lines.length, base, navigate])
 
   useDocumentTitle(t('checkout.title'))
 
@@ -76,7 +79,7 @@ export default function ShopCheckoutPage() {
         },
         promo: promo.trim().toUpperCase() || null,
         payment: 'cash',
-        channel: 'store',
+        channel,
         address: service === 'delivery' ? {
           street: address.street.trim(),
           area: address.area.trim(),
@@ -93,6 +96,10 @@ export default function ShopCheckoutPage() {
       } catch { /* private mode */ }
 
       void notifyOrder(result.order_id, result.public_token, lang)
+      rememberOrder({
+        token: result.public_token, number: result.order_number,
+        store: result.store?.name ?? store?.name ?? '', total: result.total, at: new Date().toISOString(),
+      })
 
       submittedRef.current = true
       clear()
@@ -121,7 +128,7 @@ export default function ShopCheckoutPage() {
   return (
     <div className="h-full flex flex-col bg-surface-2">
       <div className="flex items-center gap-3 px-4 py-3 bg-surface-1 border-b border-surface-4 flex-shrink-0">
-        <button className="btn-icon" onClick={() => navigate(`/store/${slug}/cart`)}>←</button>
+        <button className="btn-icon" onClick={() => navigate(`${base}/cart`)}>←</button>
         <h2 className="font-display font-bold text-lg">{t('checkout.title')}</h2>
       </div>
 

@@ -11,6 +11,9 @@ import GuestApp        from '@/guest/GuestApp'
 import ShopApp         from '@/shop/ShopApp'
 import GuestOrderPage  from '@/guest/pages/GuestOrderPage'
 import StoreConfirmPage from '@/storefront/StoreConfirmPage'
+import MarketHomePage  from '@/market/MarketHomePage'
+import MyOrdersPage    from '@/market/MyOrdersPage'
+import JoinPage        from '@/market/JoinPage'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuthStore()
@@ -53,20 +56,31 @@ export default function App() {
   return (
     <PhoneFrame>
       <Routes>
-        {/* Guest / QR flow — public, no account needed. This is the product. */}
+        {/* ── Two product lines on one platform (decision George, 30/10/2026) ──
+            (A) Delivr Stores — open delivery & takeaway marketplace + SaaS
+            (B) Delivr QR     — QR-per-property for accommodations
+            Neither replaces the other. Do not remove either. */}
+
+        {/* (B) Delivr QR — guest flow from the QR in the room. Unchanged. */}
         <Route path="/qr/:code/*" element={<GuestApp />} />
+        <Route path="/qr"         element={<LandingPage />} />
         <Route path="/t/:token"   element={<GuestOrderPage />} />
+
+        {/* (A) Delivr Stores — marketplace home, store pages, shop sign-up. */}
+        <Route path="/"               element={<MarketHomePage />} />
+        <Route path="/stores/:slug/*" element={<ShopApp market />} />
+        <Route path="/orders"         element={<MyOrdersPage />} />
+        <Route path="/join"           element={<JoinPage />} />
 
         {/* A store's own link — same ordering flow, customer-typed address. */}
         <Route path="/store/:slug/*" element={<ShopApp />} />
 
         {/* Public shell */}
-        <Route path="/"      element={<LandingPage />} />
         <Route path="/terms" element={<TermsPage />} />
         <Route path="/auth"  element={<AuthPage />} />
 
-        {/* An unknown URL is almost always a mistyped QR link, not a partner
-            trying to sign in — send it to the landing, never to /auth. */}
+        {/* An unknown URL is almost always a mistyped link, not a partner
+            trying to sign in — send it home, never to /auth. */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PhoneFrame>

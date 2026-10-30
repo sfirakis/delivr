@@ -7,7 +7,8 @@ import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
-const REF = 'ifgzciraogohycuvujip'
+// Must match the project ref in VITE_SUPABASE_URL of the dev server under test.
+const REF = process.env.E2E_SUPABASE_REF || 'ifgzciraogohycuvujip'
 const USER_ID = '11111111-2222-3333-4444-555555555555'
 const STORE_ID = '094f7c50-bb8a-41fe-a282-8e6c961ae9a0'
 
