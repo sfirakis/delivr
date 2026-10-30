@@ -148,19 +148,26 @@ JOIN (VALUES ('Έξτρα τζατζίκι',0.50,1),('Έξτρα πατάτες'
 WHERE g.name = 'Extras'
   AND NOT EXISTS (SELECT 1 FROM item_modifiers im WHERE im.group_id = g.id AND im.name = m.name);
 
--- ── Demo subscription plans (migration 009 must be applied first) ──
+-- ── Demo subscription plans (migrations 009 + 018 must be applied first) ──
+-- Stores pay a subscription only (no commission per order), with a monthly
+-- order limit; over 500 orders the price is agreed per store (018).
+-- Idempotent by (audience, name): 018 itself may already have created «Plus».
 INSERT INTO subscription_plans (name, description, audience, price, billing_cycle, trial_days,
-  commission_mode, commission_value, features, sort_order)
-VALUES
- ('Basic','Παρουσία στην πλατφόρμα, απεριόριστες παραγγελίες, προμήθεια 12%','store',0,'month',0,
-  'commission',12,'["Απεριόριστες παραγγελίες","Email + WhatsApp","Εκτύπωση"]'::jsonb,1),
- ('Pro','Μηνιαία συνδρομή με μειωμένη προμήθεια 6%','store',29.00,'month',14,
-  'commission',6,'["Όλα του Basic","Προμήθεια 6%","Προβολή στην κορυφή","Στατιστικά"]'::jsonb,2),
- ('Zero Commission','Σταθερή συνδρομή, καμία προμήθεια ανά παραγγελία','store',79.00,'month',14,
-  'none',0,'["Όλα του Pro","0% προμήθεια","Προτεραιότητα υποστήριξης"]'::jsonb,3),
+  commission_mode, commission_value, included_orders, features, sort_order)
+SELECT v.* FROM (VALUES
+ ('Basic','Δωρεάν, για να ξεκινήσεις','store',0,'month',0,
+  'none',0,15,'["Έως 15 παραγγελίες τον μήνα","Μενού, ζώνες & ωράριο","Ειδοποίηση με email & WhatsApp","Εκτύπωση παραγγελίας"]'::jsonb,1),
+ ('Pro','Για μαγαζιά με σταθερή κίνηση','store',39.00,'month',14,
+  'none',0,100,'["Έως 100 παραγγελίες τον μήνα","Όλα του Basic","Στατιστικά πωλήσεων"]'::jsonb,2),
+ ('Plus','Για μαγαζιά με πολλή κίνηση','store',79.00,'month',14,
+  'none',0,250,'["Έως 250 παραγγελίες τον μήνα","Όλα του Pro","Προβολή στην κορυφή"]'::jsonb,3),
+ ('Premium','Για τα πιο πολυσύχναστα μαγαζιά','store',150.00,'month',14,
+  'none',0,500,'["Έως 500 παραγγελίες τον μήνα","Όλα του Plus","Προτεραιότητα υποστήριξης"]'::jsonb,4),
  ('Host Partner','Το κατάλυμα εισπράττει 8% σε κάθε παραγγελία','property',0,'month',0,
-  'commission',8,'["QR κάρτα","8% απόδοση","Αναφορά εσόδων"]'::jsonb,1)
-ON CONFLICT DO NOTHING;
+  'commission',8,NULL,'["QR κάρτα","8% απόδοση","Αναφορά εσόδων"]'::jsonb,1)
+) AS v(name, description, audience, price, billing_cycle, trial_days,
+       commission_mode, commission_value, included_orders, features, sort_order)
+WHERE NOT EXISTS (SELECT 1 FROM subscription_plans p WHERE p.audience = v.audience AND p.name = v.name);
 
 -- ── A store selling on its own link ──────────────────────────
 -- Demonstrates the standalone flow: the same shop can be ordered from at

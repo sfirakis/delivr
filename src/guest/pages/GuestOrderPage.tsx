@@ -5,6 +5,7 @@ import { getOrderStatus } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { money, time, minutesUntil, phoneE164 } from '@/lib/format'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
+import { paymentIcon, paymentLabel } from '@/lib/payment'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { buildWhatsAppMessage, waLink } from '@/lib/whatsapp'
 import { Spinner, EmptyState } from '@/components/ui'
@@ -63,14 +64,12 @@ export default function GuestOrderPage() {
       discount: order.discount_amount,
       deliveryFee: order.delivery_fee,
       total: order.total,
-      paymentLabel: order.payment_method === 'cash'
-        ? (order.service === 'delivery' ? t('checkout.cash') : t('checkout.cashPickup'))
-        : order.payment_method,
+      paymentLabel: paymentLabel(order.payment_method, order.service, lang),
       notes: order.customer_notes,
       trackUrl: `${window.location.origin}/t/${token}`,
     }, lang)
     return waLink(order.store.phone, msg)
-  }, [order, lang, t, token])
+  }, [order, lang, token])
 
   if (orderQ.isLoading) {
     return <div className="h-full flex items-center justify-center"><Spinner size={32} /></div>
@@ -200,9 +199,7 @@ export default function GuestOrderPage() {
             <span className="font-display font-black text-brand">{money(order.total, lang)}</span>
           </div>
           <p className="text-[11px] text-ink-3 pt-1">
-            💶 {order.payment_method === 'cash'
-              ? (order.service === 'delivery' ? t('checkout.cash') : t('checkout.cashPickup'))
-              : order.payment_method}
+            <span data-testid="order-payment">{paymentIcon(order.payment_method)} {paymentLabel(order.payment_method, order.service, lang)}</span>
           </p>
         </div>
 

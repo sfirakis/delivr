@@ -41,7 +41,8 @@ const T = {
     customer: 'Πελάτης', phone: 'Τηλέφωνο', address: 'Διεύθυνση παράδοσης',
     items: 'Προϊόντα', subtotal: 'Υποσύνολο', discount: 'Έκπτωση',
     deliveryFee: 'Μεταφορικά', total: 'ΣΥΝΟΛΟ', payment: 'Πληρωμή',
-    cash: 'Μετρητά κατά την παράδοση', notes: 'Σημειώσεις',
+    cash: 'Μετρητά κατά την παράδοση', cashPickup: 'Μετρητά κατά την παραλαβή',
+    card: 'Κάρτα κατά την παράδοση (POS)', cardPickup: 'Κάρτα στο ταμείο', notes: 'Σημειώσεις',
     cta: 'Άνοιγμα & επιβεβαίωση παραγγελίας',
     ctaHint: 'Από τον σύνδεσμο μπορείτε να αποδεχθείτε, να απορρίψετε και να εκτυπώσετε την παραγγελία. Δεν χρειάζεται λογαριασμός.',
     scheduled: 'Προγραμματισμένη για',
@@ -53,12 +54,22 @@ const T = {
     customer: 'Customer', phone: 'Phone', address: 'Delivery address',
     items: 'Items', subtotal: 'Subtotal', discount: 'Discount',
     deliveryFee: 'Delivery fee', total: 'TOTAL', payment: 'Payment',
-    cash: 'Cash on delivery', notes: 'Notes',
+    cash: 'Cash on delivery', cashPickup: 'Cash on pickup',
+    card: 'Card on delivery (terminal)', cardPickup: 'Card at the counter', notes: 'Notes',
     cta: 'Open & confirm the order',
     ctaHint: 'From this link you can accept, reject and print the order. No account needed.',
     scheduled: 'Scheduled for',
     footer: 'This email was sent automatically by',
   },
+}
+
+/** Paid in person, straight to the store (migration 018): cash or card. */
+function payLabel(o: Record<string, any>, lang: 'el' | 'en') {
+  const t = T[lang]
+  const pickup = o.delivery_type === 'pickup'
+  if (o.payment_method === 'cash') return pickup ? t.cashPickup : t.cash
+  if (o.payment_method === 'card') return pickup ? t.cardPickup : t.card
+  return String(o.payment_method ?? '')
 }
 
 function buildEmailHtml(o: Record<string, any>, items: OrderItem[], confirmUrl: string, lang: 'el' | 'en') {
@@ -120,7 +131,7 @@ function buildEmailHtml(o: Record<string, any>, items: OrderItem[], confirmUrl: 
           </table>
 
           <p style="margin:14px 0 0;font-size:14px;">
-            💶 <strong>${t.payment}:</strong> ${o.payment_method === 'cash' ? t.cash : esc(o.payment_method)}
+            ${o.payment_method === 'card' ? '💳' : '💶'} <strong>${t.payment}:</strong> ${esc(payLabel(o, lang))}
           </p>
 
           ${o.customer_notes ? `<p style="margin:14px 0 0;padding:10px;background:#fffbeb;border-radius:8px;font-size:13px;">
@@ -163,7 +174,7 @@ function buildWhatsAppText(o: Record<string, any>, items: OrderItem[], trackUrl:
   }
   L.push('')
   L.push(`*${t.total}: ${eur(o.total)}*`)
-  L.push(`💳 ${o.payment_method === 'cash' ? t.cash : o.payment_method}`)
+  L.push(`${o.payment_method === 'card' ? '💳' : '💶'} ${payLabel(o, lang)}`)
   if (o.customer_notes) L.push(`📝 ${o.customer_notes}`)
   L.push('')
   L.push(trackUrl)
@@ -292,6 +303,9 @@ Deno.serve(async (req: Request) => {
     return json({
       ok: true,
       results,
+      // So the caller (and the WhatsApp hand-off) knows how the customer pays.
+      payment_method: order.payment_method,
+      payment_label: payLabel(order, lang),
       whatsapp_url: waUrl,
       track_url: trackUrl,
     })

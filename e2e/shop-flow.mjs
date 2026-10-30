@@ -10,6 +10,7 @@ const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
 
 const STORE_ID = '4f2e6d70-2b5a-4c8e-9d31-7c9a1f0e5b22'
+const SUB_SHOTS = process.env.SUB_SHOTS_DIR || null   // docs/screenshots/subscription-tiers (018)
 
 const STORE = {
   id: STORE_ID, slug: 'taverna-marina', name: 'Ταβέρνα Μαρίνα',
@@ -92,12 +93,14 @@ await page.route('**/*.supabase.co/**', async route => {
     return storeDisabled ? fail(route, 'STANDALONE_DISABLED') : json(route, STORE)
   }
   if (url.includes('/rpc/delivr_public_settings')) return json(route, SETTINGS)
+  // 018: this store's courier carries a card terminal.
+  if (url.includes('/rpc/delivr_store_payment_options')) return json(route, { cash: true, card_pickup: true, card_delivery: true })
   if (url.includes('/rpc/delivr_place_order')) {
     placed = JSON.parse(route.request().postData() || '{}')
     return json(route, { ok: true, order_id: 'o9', order_number: 'DLV-260922-0099',
       public_token: TOKEN, status: 'pending', service: 'delivery',
       subtotal: 37, discount: 0, delivery_fee: 4.5, total: 41.5, eta_min: 50,
-      currency: 'EUR', payment_method: 'cash', items: [],
+      currency: 'EUR', payment_method: placed.p_payment ?? 'cash', items: [],
       store: { id: STORE_ID, name: STORE.name, phone: STORE.phone, address: STORE.address,
                whatsapp: STORE.phone, notify_whatsapp: true, notify_email: true },
       address: { street: 'Οδός Σχίσμα 14', area: 'Ελούντα', city: 'Ελούντα', source: 'customer' },
@@ -112,7 +115,7 @@ await page.route('**/*.supabase.co/**', async route => {
       estimated_delivery_at: new Date(Date.now() + 50 * 60000).toISOString(),
       scheduled_for: null, prep_minutes: 25,
       subtotal: 37, discount_amount: 0, delivery_fee: 4.5, total: 41.5,
-      payment_method: 'cash', payment_status: 'pending', guest_name: 'Μαρία Τεστ',
+      payment_method: placed?.p_payment ?? 'cash', payment_status: 'pending', guest_name: 'Μαρία Τεστ',
       delivery_address: { street: 'Οδός Σχίσμα 14', area: 'Ελούντα', city: 'Ελούντα' },
       customer_notes: null,
       store: { id: STORE_ID, name: STORE.name, phone: STORE.phone, address: STORE.address, logo_url: null },
@@ -214,6 +217,22 @@ await step('Send stays disabled until the address and the customer are filled in
 })
 await shot(`${OUT}/23-shop-checkout.png`)
 
+// 6b — 018: cash or card, paid to the store in person
+await step('Payment: cash by default; card on delivery selectable when the store allows it', async () => {
+  const cash = page.getByTestId('pay-cash'), card = page.getByTestId('pay-card')
+  await card.waitFor()
+  if (!(await cash.isChecked())) throw new Error('cash not the default')
+  if (await card.isDisabled()) throw new Error('card disabled although the store accepts it')
+  await card.check()
+  if (!(await card.isChecked())) throw new Error('card not selected')
+  const b = await page.locator('body').innerText()
+  if (!b.includes('Κάρτα κατά την παράδοση') || !b.includes('τίποτα δεν χρεώνεται online')) throw new Error('labels missing')
+  if (SUB_SHOTS) {
+    await card.scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${SUB_SHOTS}/checkout-01-payment-cash-or-card.png`, timeout: 8000 }).catch(() => {})
+  }
+})
+
 // 7 — What actually reaches the RPC
 await step('Order is sent with no property code and the typed address', async () => {
   await page.getByRole('button', { name: /Αποστολή παραγγελίας/ }).click()
@@ -226,6 +245,7 @@ await step('Order is sent with no property code and the typed address', async ()
   if (placed.p_address?.floor !== '2ος') throw new Error('floor not sent')
   if (placed.p_items?.[0]?.quantity !== 2) throw new Error('quantity wrong')
   if (placed.p_guest?.phone !== '6941234567') throw new Error('phone not sent')
+  if (placed.p_payment !== 'card') throw new Error(`payment ${placed.p_payment}`)
 })
 
 // 8 — Tracking works the same as for a QR order
@@ -233,6 +253,8 @@ await step('The customer lands on the tracking page', async () => {
   await page.getByText('DLV-260922-0099').first().waitFor({ timeout: 8000 })
   const body = await page.locator('body').innerText()
   if (!body.includes('41,50') && !body.includes('41.50')) throw new Error('total missing')
+  const pay = await page.getByTestId('order-payment').innerText()
+  if (!pay.includes('Κάρτα κατά την παράδοση')) throw new Error(`tracking payment: ${pay}`)
 })
 await shot(`${OUT}/24-shop-tracking.png`)
 

@@ -11,6 +11,8 @@ import { useI18n, type TKey } from '@/lib/i18n'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { Spinner } from '@/components/ui'
+import PaymentChoice from '@/components/PaymentChoice'
+import type { PayMethod } from '@/lib/payment'
 
 const GUEST_KEY = 'delivr_guest_details'
 
@@ -26,7 +28,7 @@ export default function GuestCheckoutPage() {
   const [notes, setNotes] = useState('')
   const [promo, setPromo] = useState('')
   const [promoError, setPromoError] = useState<string | null>(null)
-  const [payment] = useState<'cash'>('cash')
+  const [payment, setPayment] = useState<PayMethod>('cash')
   const [scheduleLater, setScheduleLater] = useState(false)
   const [scheduledAt, setScheduledAt] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -208,25 +210,8 @@ export default function GuestCheckoutPage() {
           </div>
         )}
 
-        {/* Payment */}
-        <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4">
-          <p className="text-[11px] uppercase tracking-wide text-ink-3 font-semibold mb-2">
-            {t('checkout.payment')}
-          </p>
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-brand bg-brand-50">
-            <input type="radio" checked readOnly className="accent-brand w-4 h-4" />
-            <span className="flex-1 text-sm font-semibold text-ink-1">
-              💶 {service === 'delivery' ? t('checkout.cash') : t('checkout.cashPickup')}
-            </span>
-          </div>
-          {!settings?.allow_online_payment && (
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl border border-surface-4 mt-2 opacity-60">
-              <input type="radio" disabled className="w-4 h-4" />
-              <span className="flex-1 text-sm text-ink-2">💳 {t('checkout.card')}</span>
-              <span className="badge badge-gray">{t('checkout.cardSoon')}</span>
-            </div>
-          )}
-        </div>
+        {/* Payment — in person, straight to the store (018) */}
+        <PaymentChoice storeId={storeId} service={service} value={payment} onChange={setPayment} />
 
         {/* Promo code */}
         <div className="bg-surface-1 border border-surface-4 rounded-2xl p-4">

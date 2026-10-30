@@ -364,6 +364,10 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
                       onChange={v => set({ accepts_cash: v })} />
             <CheckRow label="Δέχεται online πληρωμή" hint="Απαιτεί ενεργοποίηση στις ρυθμίσεις πλατφόρμας"
                       checked={form.accepts_online ?? false} onChange={v => set({ accepts_online: v })} />
+            {form.accepts_card_on_delivery !== undefined && (
+              <CheckRow label="Κάρτα στην παράδοση" hint="Ο διανομέας έχει POS· στο take away η κάρτα επιτρέπεται πάντα"
+                        checked={form.accepts_card_on_delivery} onChange={v => set({ accepts_card_on_delivery: v })} />
+            )}
             <CheckRow label="Αυτόματη αποδοχή" hint="Οι παραγγελίες επιβεβαιώνονται χωρίς ενέργεια"
                       checked={form.auto_accept ?? false} onChange={v => set({ auto_accept: v })} />
           </div>

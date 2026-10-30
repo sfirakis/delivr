@@ -5,8 +5,10 @@ Delivery & take away πλατφόρμα με **δύο γραμμές προϊό�
 **A. Delivr Stores** = ανοιχτό marketplace + SaaS σαν το efood (όποιο μαγαζί
 γράφεται μόνο του στο `/join`· ο πελάτης διαλέγει περιοχή στο `/` και
 παραγγέλνει χωρίς λογαριασμό) και **B. Delivr QR** = guest καταλύματος
-σκανάρει QR → παραγγέλνει από τοπικά καταστήματα. Έσοδα: προμήθεια +
-συνδρομές. Live: https://delivr-ten.vercel.app · Supabase `ifgzciraogohycuvujip`.
+σκανάρει QR → παραγγέλνει από τοπικά καταστήματα. Έσοδα: **μόνο
+συνδρομές καταστημάτων** με όριο παραγγελιών/μήνα, χωρίς προμήθεια (George
+30/10/2026, migration 018)· πληρωμή πελάτη μετρητά ή κάρτα απευθείας στο
+κατάστημα, ποτέ online. Live: https://delivr-ten.vercel.app · Supabase `ifgzciraogohycuvujip`.
 Status & εκκρεμότητες: [`ROADMAP.md`](ROADMAP.md) · σχέδιο επαναφοράς:
 [`docs/RESTORE-PLAN.md`](docs/RESTORE-PLAN.md).
 
@@ -43,6 +45,8 @@ npm run build                  # production build (πρέπει πάντα πρ�
   Αλλαγές κατάστασης: `delivr_store_action` (token, `/s/<token>`) ή
   `delivr_merchant_set_order_status` (POS, migration 016).
 - `profiles.role`/`loyalty_points` αλλάζουν ΜΟΝΟ από service role (011a).
+- Το όριο παραγγελιών του πακέτου ΔΕΝ μπλοκάρει ποτέ παραγγελία· η αλλαγή
+  πακέτου γίνεται μόνο από `delivr_apply_plan_upgrades()` (018).
 - Νέες SQL functions: πάντα `REVOKE EXECUTE ... FROM PUBLIC, anon` (το μάθημα
   των migrations 009/010 που ξανάνοιξαν ό,τι έκλεισε η 008).
 - Τηλέφωνα σε E.164 πριν από wa.me/tel.

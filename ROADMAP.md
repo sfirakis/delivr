@@ -13,9 +13,51 @@
 
 Κοινά: παραγγελία μόνο μέσω `delivr_place_order`, επιβεβαίωση καταστήματος
 από tokenized σελίδα χωρίς login (`/s/<token>`), tracking `/t/<token>`.
-Έσοδα: προμήθεια ανά παραγγελία + συνδρομές καταστημάτων.
+Έσοδα: **μόνο συνδρομές καταστημάτων, χωρίς προμήθεια** (απόφαση George
+30/10/2026, migration 018 — branch `feat/subscription-tiers`, όχι ακόμα live).
+Το κατάλυμα (Host Partner) κρατά το 8% του.
 
 ## 🎯 Τώρα — Open marketplace (2026-10-30)
+
+- 🔄 **Μόνο συνδρομή, καμία προμήθεια (απόφαση George 30/10/2026).** Branch
+  `feat/subscription-tiers` (από `fix/hide-commission`), draft PR — **τίποτα
+  live ακόμα**. Migration `018_subscription_tiers.sql`:
+  - ✅ Πακέτα (ίδια ids, τίποτα δεν σβήνεται): Basic 0€ / 15 παραγγελίες τον
+    μήνα · Pro 39€ / 100 · **Plus 79€ / 250 (νέο)** · Premium 150€ / 500 ·
+    πάνω από 500 «Κατόπιν συμφωνίας». 14 μέρες δοκιμή στα επί πληρωμή. Όλα
+    `commission_mode = none` + προεπιλογή πλατφόρμας για καταστήματα `none`.
+    Host Partner (κατάλυμα) 8% αμετάβλητο.
+  - ✅ Βρέθηκε & διορθώθηκε: η live `delivr_place_order` αγνοούσε το πακέτο
+    και χρέωνε σε όλα τα μαγαζιά την προεπιλογή πλατφόρμας (10%, 4 χρεώσεις /
+    10,32€ ως τώρα). Τώρα περνά από `delivr_resolve_billing` (ατομική ρύθμιση →
+    πακέτο → πλατφόρμα) → 0€ ανά παραγγελία.
+  - ✅ Μετρητής μήνα (Europe/Athens, χωρίς ακυρωμένες): στο merchant
+    «X / όριο παραγγελίες αυτόν τον μήνα» + banner στο ≥80% και πάνω από το
+    όριο. **Οι παραγγελίες δεν μπλοκάρονται ποτέ.**
+  - ✅ `delivr_apply_plan_upgrades()` (admin/service/pg_cron): όποιο μαγαζί
+    ξεπέρασε το όριο τον προηγούμενο μήνα πάει στο μικρότερο πακέτο που το
+    καλύπτει· >500 μόνο σήμανση. Admin → Συνδρομές → «Όρια παραγγελιών» +
+    κουμπί «Εφαρμογή αλλαγών πακέτων». Μία αλλαγή/μαγαζί/μήνα (ασφαλές ×2).
+  - ✅ Πληρωμή «Μετρητά» ή «Κάρτα» (EL+EN) σε QR/link/marketplace: take away
+    κάρτα πάντα (ταμείο)· delivery κάρτα μόνο με `stores.accepts_card_on_delivery`
+    (ρύθμιση merchant, default off)· έλεγχος και στον server (`CARD_NOT_ACCEPTED`).
+    Φαίνεται σε `/s`, POS, `/t`, ticket, email/WhatsApp του `notify-order`.
+    Καθόλου χρήματα μέσω πλατφόρμας, κανένα Stripe.
+  - ✅ `/join`: 4 πακέτα με όρια + «Πάνω από 500 παραγγελίες; Κατόπιν
+    συμφωνίας»· αντί για «online πληρωμή έρχεται σύντομα» → μετρητά ή κάρτα.
+  - ✅ Tests: DB 32/32 (+ marketplace 24/24, merchant-status 17/17) σε PGlite ·
+    e2e guest 12/12, shop 11/11, market 12/12, join 7/7, merchant-pos 10/10,
+    store-confirm 8/8, admin 10/10 · build + lint πράσινα · screenshots
+    `docs/screenshots/subscription-tiers/`.
+  - ⬜ **Θέλει OK George για live:** merge PR #7 → εφαρμογή 018 → merge αυτού
+    του PR → deploy `notify-order` (νέα labels κάρτας). pg_cron είναι
+    διαθέσιμο αλλά ΟΧΙ εγκατεστημένο: ή Supabase → Integrations → Cron και
+    ξανατρέχει το τελευταίο block της 018, ή το admin πατά το κουμπί κάθε 1η
+    του μήνα (πριν την «Έκδοση χρεώσεων»).
+  - ⬜ Αποφάσεις George: οι 2 υπάρχουσες συνδρομές κρατούν «κλειδωμένη» τιμή
+    (Pro 29€ active, Premium 79€ σε δοκιμή) — να ανέβουν στις νέες τιμές;
+    Τα μαγαζιά χωρίς συνδρομή μετράνε ως Basic (15)· στην αυτόματη αλλαγή
+    παίρνουν ενεργή συνδρομή χωρίς νέα δοκιμή.
 
 - 🔄 **Απόφαση George 30/10: δύο γραμμές προϊόντος.** Branch
   `feat/open-marketplace` (draft PR) — πλήρες σχέδιο & τι χάθηκε/τι μένει:
@@ -33,8 +75,10 @@
     Supabase · merge PR #6 (ad5262c) → Vercel production READY · έλεγχος: `/` =
     αγορά (0 μαγαζιά listed ακόμα), `/qr/SUNSET2A` ίδιο με πριν, `/join` με 3
     πακέτα. ⬜ Άναμμα marketplace στα μαγαζιά από admin.
-    ⚠ Οι περιγραφές πακέτων στη βάση (subscription_plans) γράφουν την προμήθεια
-    (12% / 6% / καμία) → φαίνεται στο `/join`, αντίθετα με την προεπιλογή HQ.
+    ✅ 30/10 (OK George): 017 στο live, τα κείμενα πακέτων χωρίς προμήθεια,
+    «Zero Commission» → «Premium»· `/join` ελέγχθηκε. PR #7 (αρχεία) περιμένει
+    merge. ⚠ Η χρέωση στη βάση ΔΕΝ άλλαξε ακόμα (στην πράξη 10% σε όλα τα
+    μαγαζιά) — τη διορθώνει η 018 παραπάνω.
   - Αποφάσεις, *προεπιλογή HQ — αλλάζει αν πει ο George*:
     - χειροκίνητη έγκριση νέων μαγαζιών;
     - η προμήθεια πλατφόρμας ΔΕΝ φαίνεται στο `/join`, μόνο οι τιμές των
@@ -91,12 +135,17 @@
 
 - Μετάφραση menu (name_en στήλες) — το κοινό είναι ξένοι τουρίστες.
 - Φωτογραφίες προϊόντων/λογότυπα (uploader + Storage bucket).
-- Online πληρωμές (Stripe/Viva) — τώρα σωστά «Μετρητά + Coming soon».
+- Online πληρωμές (Stripe/Viva) — **όχι** (George 30/10): μετρητά ή κάρτα
+  απευθείας στο κατάστημα (018).
 - Realtime tracking (τώρα polling 20s — το postgres_changes δεν περνά RLS).
 - Deploy των υπόλοιπων 5 edge functions (μόνο notify-order είναι deployed).
 
 ## Log
 
+- 2026-10-30: Μόνο συνδρομή (018, branch `feat/subscription-tiers`, draft PR):
+  Basic/Pro/Plus/Premium 0/39/79/150€ για 15/100/250/500 παραγγελίες, μετρητής
+  μήνα + αυτόματη αλλαγή πακέτου, μετρητά ή κάρτα στην παράδοση/ταμείο.
+  DB 73/73, e2e 70/70. Όχι live.
 - 2026-10-30: Απόφαση George — δύο γραμμές προϊόντος (Delivr Stores
   marketplace+SaaS / Delivr QR). Branch `feat/open-marketplace`: migrations
   014/015 (όχι ακόμα live), marketplace + self-signup + admin έγκριση,

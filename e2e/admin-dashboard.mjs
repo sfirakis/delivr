@@ -9,6 +9,7 @@ const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f060-5e84-aef3-e097fa6a3f63/scratchpad'
 // Must match the project ref in VITE_SUPABASE_URL of the dev server under test.
 const REF = process.env.E2E_SUPABASE_REF || 'ifgzciraogohycuvujip'
+const SUB_SHOTS = process.env.SUB_SHOTS_DIR || null   // docs/screenshots/subscription-tiers (018)
 const USER_ID = '11111111-2222-3333-4444-555555555555'
 const STORE_ID = '094f7c50-bb8a-41fe-a282-8e6c961ae9a0'
 
@@ -55,6 +56,32 @@ const PLANS = [
     billing_cycle: 'month', trial_days: 14, commission_mode: 'commission', commission_value: 6,
     included_orders: null, features: [], is_active: true, sort_order: 2 },
 ]
+
+// 018: monthly order limits per plan, as delivr_admin_plan_usage returns them.
+const PRO = { id: 'pl2', name: 'Pro', price: 39, billing_cycle: 'month', included_orders: 100 }
+const PLUS = { id: 'pl3', name: 'Plus', price: 79, billing_cycle: 'month', included_orders: 250 }
+let planUsageApplied = false
+const planUsage = () => ({
+  month: '2026-11-01', prev_month: '2026-10-01', top_limit: 500,
+  stores: [
+    { store_id: STORE_ID, name: 'Souvlaki Corner', slug: 'souvlaki-corner', onboarding_status: 'active',
+      plan: { id: 'pl1', name: 'Basic', price: 0 }, subscribed: false, limit: 15, orders: 13, pct: 87,
+      state: 'near', suggested_plan: PRO, prev_orders: 20, prev_state: 'over',
+      pending: planUsageApplied ? null : { kind: 'upgrade', to_plan: PRO },
+      applied: planUsageApplied ? { kind: 'upgrade', to_plan_name: 'Pro', at: new Date().toISOString() } : null },
+    { store_id: 's-napoli', name: 'Pizza Napoli', slug: 'pizza-napoli', onboarding_status: 'active',
+      plan: { id: 'pl2', name: 'Pro', price: 39 }, subscribed: true, limit: 100, orders: 131, pct: 131,
+      state: 'over', suggested_plan: PLUS, prev_orders: 64, prev_state: 'ok', pending: null, applied: null },
+    { store_id: 's-grill', name: 'Big Grill', slug: 'big-grill', onboarding_status: 'active',
+      plan: { id: 'pl4', name: 'Premium', price: 150 }, subscribed: true, limit: 500, orders: 540, pct: 108,
+      state: 'custom', suggested_plan: null, prev_orders: 610, prev_state: 'custom',
+      pending: planUsageApplied ? null : { kind: 'custom', to_plan: null },
+      applied: planUsageApplied ? { kind: 'custom', to_plan_name: null, at: new Date().toISOString() } : null },
+    { store_id: 's-cafe', name: 'Quiet Cafe', slug: 'quiet-cafe', onboarding_status: 'active',
+      plan: { id: 'pl1', name: 'Basic', price: 0 }, subscribed: false, limit: 15, orders: 3, pct: 20,
+      state: 'ok', suggested_plan: null, prev_orders: 4, prev_state: 'ok', pending: null, applied: null },
+  ],
+})
 
 const SUBS = [
   { id: 's1', plan_id: 'pl2', party_type: 'store', party_id: STORE_ID, status: 'active',
@@ -150,6 +177,13 @@ await page.route('**/*.supabase.co/**', async route => {
     try { body = JSON.parse(req.postData() || '{}') } catch { /* GET rpc */ }
     captured.rpc.push({ fn, body })
     if (fn === 'delivr_platform_stats') return json(route, PLATFORM_STATS)
+    if (fn === 'delivr_admin_plan_usage') return json(route, planUsage())
+    if (fn === 'delivr_apply_plan_upgrades') {
+      planUsageApplied = true
+      return json(route, { ok: true, period: '2026-11-01', evaluated_month: '2026-10-01',
+        upgraded: [{ store_id: STORE_ID, name: 'Souvlaki Corner', orders: 20, from: 'Basic', to: 'Pro', price: 39 }],
+        custom: [{ store_id: 's-grill', name: 'Big Grill', orders: 610, plan: 'Premium' }] })
+    }
     if (fn === 'delivr_bill_subscriptions') {
       return json(route, { ok: true, created: 2, total: 58, period_start: day(20), period_end: day(0) })
     }
@@ -257,6 +291,28 @@ await step('Subscriptions shows MRR and bills a period', async () => {
   if (!/^\d{4}-\d{2}-01$/.test(billed.body.p_period)) throw new Error(`bad period: ${billed.body.p_period}`)
 })
 await shot(`${OUT}/09-subscriptions.png`)
+
+await step('Order limits (018): stores near/over their plan, suggested plan, «Κατόπιν συμφωνίας» above 500', async () => {
+  const table = page.getByTestId('plan-limits-table')
+  await table.waitFor()
+  const t = await table.innerText()
+  for (const s of ['Souvlaki Corner', '13 / 15', 'Pizza Napoli', '131 / 100', 'Plus', 'Big Grill', 'Κατόπιν συμφωνίας', '⏳ → Pro'])
+    if (!t.includes(s)) throw new Error(`missing "${s}" in limits table`)
+  if (t.includes('Quiet Cafe')) throw new Error('a store well within its limit is listed by default')
+  await page.getByText('Όλα τα καταστήματα').click()
+  if (!(await table.innerText()).includes('Quiet Cafe')) throw new Error('«all stores» toggle')
+  await page.getByText('Όλα τα καταστήματα').click()
+  await table.scrollIntoViewIfNeeded()
+  if (SUB_SHOTS) await page.screenshot({ path: `${SUB_SHOTS}/admin-01-order-limits.png`, timeout: 8000 }).catch(() => {})
+})
+
+await step('«Εφαρμογή αλλαγών πακέτων» runs delivr_apply_plan_upgrades and shows what was applied', async () => {
+  await page.getByRole('button', { name: /Εφαρμογή αλλαγών πακέτων/ }).click()
+  await page.getByText(/Αλλαγές πακέτου: 1/).waitFor()
+  if (!captured.rpc.some(r => r.fn === 'delivr_apply_plan_upgrades')) throw new Error('apply never called')
+  await page.getByText('✓ → Pro').waitFor()
+  if (SUB_SHOTS) await page.screenshot({ path: `${SUB_SHOTS}/admin-02-order-limits-applied.png`, timeout: 8000 }).catch(() => {})
+})
 
 await step('Admin guide renders and carries the printable store handout', async () => {
   await page.getByRole('button', { name: /Οδηγός/ }).click()

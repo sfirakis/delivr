@@ -11,17 +11,24 @@ import { launchChromium } from './browser.mjs'
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const REF = process.env.E2E_SUPABASE_REF || 'ifgzciraogohycuvujip'
 const SHOTS = process.env.SHOTS_DIR || null
+const SUB_SHOTS = process.env.SUB_SHOTS_DIR || null   // docs/screenshots/subscription-tiers (018)
 const USER_ID = '22222222-3333-4444-5555-666666666666'
 const ADMIN_ID = '11111111-2222-3333-4444-555555555555'
 const STORE_ID = '7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 
+// As delivr_public_plans returns them after migration 018.
 const PLANS = {
   default: { auto_approve: false },
+  custom_above: 500,
   plans: [
-    { id: 'p-basic', name: 'Basic', description: null, price: 0, billing_cycle: 'month', trial_days: 0,
-      features: [] },
-    { id: 'p-pro', name: 'Pro', description: 'Για μαγαζιά με σταθερό τζίρο', price: 29, billing_cycle: 'month',
-      trial_days: 30, features: [] },
+    { id: 'p-basic', name: 'Basic', description: 'Δωρεάν, για να ξεκινήσεις', price: 0, billing_cycle: 'month',
+      trial_days: 0, included_orders: 15, features: [] },
+    { id: 'p-pro', name: 'Pro', description: 'Για μαγαζιά με σταθερή κίνηση', price: 39, billing_cycle: 'month',
+      trial_days: 14, included_orders: 100, features: [] },
+    { id: 'p-plus', name: 'Plus', description: 'Για μαγαζιά με πολλή κίνηση', price: 79, billing_cycle: 'month',
+      trial_days: 14, included_orders: 250, features: [] },
+    { id: 'p-premium', name: 'Premium', description: 'Για τα πιο πολυσύχναστα μαγαζιά', price: 150, billing_cycle: 'month',
+      trial_days: 14, included_orders: 500, features: [] },
   ],
 }
 
@@ -131,14 +138,25 @@ const shot = async (page, name, fullPage = false) => {
     await page.getByText('Βάλε το κατάστημά σου στο Delivr').waitFor()
     await page.getByText('Pro').first().waitFor()
     const b = await page.locator('body').innerText()
-    if (!/29,00\s€\/μήνα/.test(b)) throw new Error('Pro price missing')
-    for (const s of ['by ActionWeb', 'Basic', '30 μέρες δωρεάν δοκιμή', 'online πληρωμή έρχεται σύντομα']) {
+    for (const re of [/39,00\s€\/μήνα/, /79,00\s€\/μήνα/, /150,00\s€\/μήνα/]) {
+      if (!re.test(b)) throw new Error(`price missing: ${re}`)
+    }
+    for (const s of ['by ActionWeb', 'Basic', 'Plus', 'Premium', '14 μέρες δωρεάν δοκιμή',
+                     'Έως 15 παραγγελίες τον μήνα', 'Έως 100 παραγγελίες τον μήνα', 'Έως 250 παραγγελίες τον μήνα',
+                     'Έως 500 παραγγελίες τον μήνα', 'Πάνω από 500 παραγγελίες;', 'Κατόπιν συμφωνίας',
+                     'μετρητά ή κάρτα', 'οι παραγγελίες δεν σταματούν']) {
       if (!b.includes(s)) throw new Error(`missing "${s}"`)
     }
+    if (/online πληρωμή έρχεται σύντομα/.test(b)) throw new Error('"online payment soon" is back')
     if (/Visa|PCI/.test(b)) throw new Error('fake payment claims are back')
     if (/προμήθει|ανά παραγγελία|\d\s?%/.test(b)) throw new Error('platform commission is shown publicly')
   })
   await shot(page, 'join-m-01-offer')
+  if (SUB_SHOTS) {
+    await page.screenshot({ path: `${SUB_SHOTS}/join-01-offer.png`, timeout: 8000 }).catch(() => {})
+    await page.getByText('Πάνω από 500 παραγγελίες;').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${SUB_SHOTS}/join-02-plans-limits.png`, timeout: 8000 }).catch(() => {})
+  }
 
   await step(page, 'Submit stays disabled until shop and account are complete', async () => {
     const btn = page.getByRole('button', { name: 'Δημιουργία καταστήματος' })
