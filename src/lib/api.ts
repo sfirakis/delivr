@@ -224,6 +224,8 @@ const KNOWN_CODES = [
   'BAD_ACTION', 'PROPERTY_REQUIRED', 'SCHEDULING_DISABLED',
   'STANDALONE_DISABLED', 'ADDRESS_REQUIRED', 'AREA_REQUIRED',
   'PROMO_INVALID', 'PROMO_EXPIRED', 'PROMO_MIN_ORDER', 'PROMO_LIMIT',
+  // Delivr Stores (marketplace) — migration 014/015
+  'ALREADY_REGISTERED', 'AUTH_REQUIRED', 'CITY_REQUIRED', 'SERVICE_REQUIRED', 'ADMIN_ONLY_FIELD',
 ]
 
 function toApiError(error: { message?: string } | null): ApiError {
@@ -265,6 +267,91 @@ export const logScan = (code: string) =>
 
 export const getStoreBySlug = (slug: string) =>
   rpc<StandaloneStore>('delivr_store_by_slug', { p_slug: slug })
+
+// ============================================================
+// Delivr Stores — the open marketplace (migration 014)
+// ============================================================
+
+/** An area a customer can pick on the marketplace home. */
+export interface MarketArea { area: string; city: string | null; stores: number }
+
+/** One store on the marketplace list. `delivers` / `pickup` are null in browse mode (no area yet). */
+export interface MarketStore {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  category: string
+  cuisine_tags: string[]
+  logo_url: string | null
+  cover_url: string | null
+  address: string
+  city: string | null
+  rating: number
+  review_count: number
+  is_promoted: boolean
+  discount_pct: number | null
+  pickup_discount_pct: number
+  is_open_now: boolean
+  supports_delivery: boolean
+  supports_takeaway: boolean
+  delivers: boolean | null
+  pickup: boolean | null
+  zone_name: string | null
+  delivery_fee: number
+  min_order: number
+  free_above: number | null
+  eta_min: number
+  prep_min: number
+}
+
+export interface PublicPlan {
+  id: string
+  name: string
+  description: string | null
+  price: number
+  billing_cycle: 'month' | 'year'
+  trial_days: number
+  commission_mode: 'none' | 'flat' | 'commission' | null
+  commission_value: number | null
+  features: string[]
+}
+
+export interface PublicPlans {
+  default: { mode: 'none' | 'flat' | 'commission'; value: number; auto_approve: boolean } | null
+  plans: PublicPlan[]
+}
+
+export const getMarketAreas = () => rpc<MarketArea[]>('delivr_marketplace_areas')
+
+export const getMarketStores = (area: { area?: string; postal_code?: string; city?: string } | null) =>
+  rpc<MarketStore[]>('delivr_marketplace_stores', {
+    p_area: area?.area || null,
+    p_postal: area?.postal_code || null,
+    p_city: area?.city || null,
+  })
+
+export const getPublicPlans = () => rpc<PublicPlans>('delivr_public_plans')
+
+export interface StoreSignup {
+  name: string
+  category: string
+  phone: string
+  address: string
+  city: string
+  area: string
+  postal_code: string
+  description?: string
+  supports_delivery: boolean
+  supports_takeaway: boolean
+  delivery_fee: number
+  min_order: number
+}
+
+export const registerStore = (store: StoreSignup, planId: string | null) =>
+  rpc<{ id: string; slug: string; onboarding_status: 'pending' | 'active' }>('delivr_register_store', {
+    p_store: store, p_plan_id: planId,
+  })
 
 export const placeOrder = (input: {
   code: string | null

@@ -6,10 +6,12 @@ import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { CartProgress, TotalsCard } from '@/guest/CartWidgets'
 import { EmptyState, QtyStepper } from '@/components/ui'
 import { useShop } from '@/shop/useShop'
+import { useShopMode } from '@/shop/shopMode'
 
 export default function ShopCartPage() {
   const { slug = '' } = useParams()
   const navigate = useNavigate()
+  const { base } = useShopMode()
   const { t, lang } = useI18n()
   const { lines, storeName, service, setQty, clear, subtotal } = useGuestCart()
   const { priced, areaUnserved } = useShop(slug)
@@ -22,12 +24,12 @@ export default function ShopCartPage() {
     return (
       <div className="h-full flex flex-col bg-surface-2">
         <div className="flex items-center gap-3 px-4 py-3 bg-surface-1 border-b border-surface-4">
-          <button className="btn-icon" onClick={() => navigate(`/store/${slug}`)}>←</button>
+          <button className="btn-icon" onClick={() => navigate(`${base}`)}>←</button>
           <h2 className="font-display font-bold text-lg">{t('cart.title')}</h2>
         </div>
         <div className="flex-1 flex items-center justify-center">
           <EmptyState emoji="🛒" title={t('cart.empty')}
-            action={t('cart.addMore')} onAction={() => navigate(`/store/${slug}`)} />
+            action={t('cart.addMore')} onAction={() => navigate(`${base}`)} />
         </div>
       </div>
     )
@@ -36,7 +38,7 @@ export default function ShopCartPage() {
   return (
     <div className="h-full flex flex-col bg-surface-2">
       <div className="flex items-center gap-3 px-4 py-3 bg-surface-1 border-b border-surface-4 flex-shrink-0">
-        <button className="btn-icon" onClick={() => navigate(`/store/${slug}`)}>←</button>
+        <button className="btn-icon" onClick={() => navigate(`${base}`)}>←</button>
         <div className="flex-1 min-w-0">
           <h2 className="font-display font-bold text-lg leading-tight">{t('cart.title')}</h2>
           <p className="text-[11px] text-ink-3 truncate">{storeName}</p>
@@ -67,7 +69,7 @@ export default function ShopCartPage() {
         ))}
 
         <button className="w-full text-center text-sm font-semibold text-brand py-3"
-                onClick={() => navigate(`/store/${slug}`)}>
+                onClick={() => navigate(`${base}`)}>
           + {t('cart.addMore')}
         </button>
 
@@ -82,7 +84,7 @@ export default function ShopCartPage() {
         <button
           className="btn btn-primary btn-lg w-full"
           disabled={totals.missingToMin > 0 || areaUnserved}
-          onClick={() => navigate(`/store/${slug}/checkout`)}
+          onClick={() => navigate(`${base}/checkout`)}
         >
           {t('cart.checkout')} · {money(totals.total, lang)}
         </button>

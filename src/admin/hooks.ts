@@ -44,6 +44,12 @@ export interface AdminStore {
   /** Store takes orders from its own /store/<slug> link, with no property behind them. */
   standalone_enabled: boolean
   standalone_intro: string | null
+  /** Delivr Stores (migration 014): shown in the public marketplace. */
+  marketplace_listed?: boolean
+  /** Set when the shop signed itself up from /join. */
+  self_registered_at?: string | null
+  /** Plan the shop picked at sign-up — the admin turns it into a subscription. */
+  requested_plan_id?: string | null
   rating: number
   review_count: number
   notes: string | null

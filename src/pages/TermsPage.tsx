@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { useI18n, LangToggle, type TKey } from '@/lib/i18n'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
+import DelivrLogo from '@/components/brand/DelivrLogo'
 
 const SECTIONS: { h: TKey; p: TKey }[] = [
   { h: 'terms.service.h', p: 'terms.service.p' },
@@ -33,8 +34,8 @@ export default function TermsPage() {
           </section>
         ))}
 
-        <p className="text-center text-[10px] text-ink-3 pt-2 pb-4">
-          {t('guest.poweredBy')} <span className="font-bold">Delivr</span>
+        <p className="flex items-center justify-center gap-1.5 text-[10px] text-ink-3 pt-2 pb-4">
+          {t('guest.poweredBy')} <DelivrLogo variant="full" size="xs" />
         </p>
       </div>
     </div>

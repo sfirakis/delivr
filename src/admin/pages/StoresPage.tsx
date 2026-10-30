@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import toast from 'react-hot-toast'
 import {
   useAdminStores, useUpsertStore, useDeleteStore,
-  useZones, useUpsertZone, useDeleteZone,
+  useZones, useUpsertZone, useDeleteZone, usePlans,
   type AdminStore, type AdminZone,
 } from '../hooks'
 import { Card, Field, TextInput, TextArea, Select, CheckRow, Modal, StatusChip } from '../ui'
@@ -34,7 +34,7 @@ const slugify = (s: string) =>
     .replace(/[^a-z0-9α-ω]+/gi, '-').replace(/^-|-$/g, '')
 
 // ── Delivery zones editor ────────────────────────────────────
-function ZonesEditor({ storeId }: { storeId: string }) {
+export function ZonesEditor({ storeId, audience = 'admin' }: { storeId: string; audience?: 'admin' | 'merchant' }) {
   const zonesQ = useZones(storeId)
   const upsert = useUpsertZone(storeId)
   const remove = useDeleteZone(storeId)
@@ -44,11 +44,20 @@ function ZonesEditor({ storeId }: { storeId: string }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-2">
-        Οι ζώνες καθορίζουν πού παραδίδει το κατάστημα και με ποια χρέωση. Ένα κατάλυμα ταιριάζει
-        με ζώνη όταν συμπίπτει ο <strong>Τ.Κ.</strong> ή η <strong>περιοχή</strong>. Αν δεν ταιριάξει καμία
-        ζώνη, χρησιμοποιείται η ακτίνα σε χιλιόμετρα.
-      </p>
+      {audience === 'admin' ? (
+        <p className="text-sm text-ink-2">
+          Οι ζώνες καθορίζουν πού παραδίδει το κατάστημα και με ποια χρέωση. Ένα κατάλυμα ταιριάζει
+          με ζώνη όταν συμπίπτει ο <strong>Τ.Κ.</strong> ή η <strong>περιοχή</strong>. Αν δεν ταιριάξει καμία
+          ζώνη, χρησιμοποιείται η ακτίνα σε χιλιόμετρα. Οι ίδιες περιοχές εμφανίζονται στους πελάτες
+          του Delivr Stores.
+        </p>
+      ) : (
+        <p className="text-sm text-ink-2">
+          Κάθε ζώνη είναι μια περιοχή που εξυπηρετείς, με δικά της μεταφορικά και ελάχιστη παραγγελία.
+          Ο πελάτης διαλέγει την περιοχή του και βλέπει τις δικές σου τιμές. Γράψε την περιοχή όπως
+          τη λένε οι πελάτες (π.χ. «Αμμουδάρα») ή τον Τ.Κ.
+        </p>
+      )}
 
       <div className="overflow-x-auto">
         <table className="dash-table">
@@ -166,7 +175,12 @@ function StandaloneTab({ form, set }: {
       <CheckRow label="Ενεργός δικός του σύνδεσμος παραγγελιών"
                 hint="Χωρίς αυτό, ο σύνδεσμος επιστρέφει «μη διαθέσιμο»"
                 checked={form.standalone_enabled ?? false}
-                onChange={v => set({ standalone_enabled: v })} />
+                onChange={v => set(v ? { standalone_enabled: true } : { standalone_enabled: false, marketplace_listed: false })} />
+
+      <CheckRow label="Εμφάνιση στο Delivr Stores (marketplace)"
+                hint="Οι πελάτες το βρίσκουν στην αρχική όταν διαλέξουν περιοχή που εξυπηρετεί. Χρειάζεται και ενεργό σύνδεσμο."
+                checked={form.marketplace_listed ?? false}
+                onChange={v => set(v ? { marketplace_listed: true, standalone_enabled: true } : { marketplace_listed: false })} />
 
       <Field label="Μήνυμα καλωσορίσματος" hint="Εμφανίζεται κάτω από το όνομα στη σελίδα του καταστήματος">
         <TextArea rows={2} value={form.standalone_intro ?? ''}
@@ -223,7 +237,7 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
   const tabs = [
     ['basic', 'Στοιχεία'], ['delivery', 'Delivery & Take away'],
     ['billing', 'Χρέωση & ειδοποιήσεις'], ['zones', 'Ζώνες'],
-    ['link', 'Δικός του σύνδεσμος'],
+    ['link', 'Σύνδεσμος & Marketplace'],
   ] as const
 
   return (
@@ -423,8 +437,18 @@ function StoreEditor({ store, onClose }: { store: Partial<AdminStore>; onClose: 
 export default function StoresPage() {
   const storesQ = useAdminStores()
   const remove = useDeleteStore()
+  const upsert = useUpsertStore()
+  const plansQ = usePlans()
   const [editing, setEditing] = useState<Partial<AdminStore> | null>(null)
   const [search, setSearch] = useState('')
+
+  // Shops that signed themselves up from /join and wait for a yes.
+  const pending = (storesQ.data ?? []).filter(s => s.onboarding_status === 'pending')
+  const planName = (id: string | null | undefined) => plansQ.data?.find(p => p.id === id)?.name
+  const approve = (s: AdminStore) => upsert.mutate({ id: s.id, onboarding_status: 'active' }, {
+    onSuccess: () => toast.success(`«${s.name}» εγκρίθηκε${s.marketplace_listed ? ' και εμφανίζεται στο Delivr Stores' : ''}`),
+    onError: (e) => toast.error((e as Error).message),
+  })
 
   const stores = (storesQ.data ?? []).filter(s =>
     !search || s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -442,6 +466,30 @@ export default function StoresPage() {
         </div>
       </Card>
 
+      {pending.length > 0 && (
+        <Card title={`⏳ Περιμένουν έγκριση (${pending.length})`}>
+          <div className="space-y-2">
+            {pending.map(s => (
+              <div key={s.id} className="flex flex-wrap items-center gap-3 border border-surface-4 rounded-xl p-3">
+                <div className="flex-1 min-w-[200px]">
+                  <p className="font-semibold">{s.name}</p>
+                  <p className="text-[11px] text-ink-3">
+                    {[s.address, s.city, s.phone, s.email].filter(Boolean).join(' · ')}
+                    {s.self_registered_at ? ` · εγγραφή ${new Date(s.self_registered_at).toLocaleDateString('el-GR')}` : ''}
+                    {planName(s.requested_plan_id) ? ` · ζήτησε πακέτο «${planName(s.requested_plan_id)}»` : ''}
+                  </p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={() => setEditing(s)}>Έλεγχος</button>
+                <button className="btn btn-primary btn-sm" disabled={upsert.isPending} onClick={() => approve(s)}>✅ Έγκριση</button>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-ink-3 mt-2">
+            Η έγκριση ενεργοποιεί το κατάστημα. Αν ζήτησε πακέτο, φτιάξε τη συνδρομή στο «🔁 Συνδρομές».
+          </p>
+        </Card>
+      )}
+
       <Card>
         {storesQ.isLoading ? (
           <div className="py-10 flex justify-center"><Spinner /></div>
@@ -451,7 +499,7 @@ export default function StoresPage() {
               <thead>
                 <tr>
                   <th>Κατάστημα</th><th>Κατηγορία</th><th>Πόλη</th><th>Delivery</th>
-                  <th>Take away</th><th>Μεταφ.</th><th>Ελάχ.</th><th>Χρέωση</th>
+                  <th>Take away</th><th>Πωλεί από</th><th>Μεταφ.</th><th>Ελάχ.</th><th>Χρέωση</th>
                   <th>Κατάσταση</th><th></th>
                 </tr>
               </thead>
@@ -467,6 +515,12 @@ export default function StoresPage() {
                     <td className="text-ink-2">{s.city ?? '—'}</td>
                     <td>{s.supports_delivery ? `✓ ${num(s.delivery_radius_km)}km` : '—'}</td>
                     <td>{s.supports_takeaway ? '✓' : '—'}</td>
+                    <td className="whitespace-nowrap">
+                      {/* Which product line(s) the store sells through */}
+                      {s.marketplace_listed && <span className="badge badge-brand mr-1" title="Delivr Stores marketplace">Market</span>}
+                      {s.standalone_enabled && <span className="badge badge-gray mr-1" title="/store/slug">Link</span>}
+                      {(num(s.lat) !== 0 || num(s.lng) !== 0) && <span className="badge badge-gray" title="Delivr QR — εμφανίζεται στα καταλύματα της ζώνης του (έχει συντεταγμένες)">QR</span>}
+                    </td>
                     <td>{money(s.delivery_fee)}</td>
                     <td>{money(s.min_order_amount)}</td>
                     <td className="text-xs">
@@ -493,7 +547,7 @@ export default function StoresPage() {
                   </tr>
                 ))}
                 {stores.length === 0 && (
-                  <tr><td colSpan={10} className="text-center text-ink-3 py-8">Κανένα κατάστημα.</td></tr>
+                  <tr><td colSpan={11} className="text-center text-ink-3 py-8">Κανένα κατάστημα.</td></tr>
                 )}
               </tbody>
             </table>

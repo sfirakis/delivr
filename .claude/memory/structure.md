@@ -7,7 +7,9 @@ Verified from `package.json`, `vite.config.ts`, `.env.example`, `src/App.tsx`, `
 - `src/App.tsx` — react-router routes; `AuthGuard` gates protected pages; mounts sub-apps `MerchantApp` (`/merchant/*`), `DriverApp` (`/driver/*`), `AdminApp` (`/admin/*`).
 
 ## Key folders (under `src/`)
-- `pages/` — customer screens (Splash, Auth, Home, Store, Cart, Checkout, Tracking, Orders, Profile, Favorites).
+- ⚠️ 2026-10-30: two product lines (A Delivr Stores marketplace, B Delivr QR) — see `docs/RESTORE-PLAN.md`. The old login-only customer app (Home/Store/Cart/... in `pages/`) was removed 12/9; its replacement is `market/` + `shop/` (guest checkout).
+- `market/` — marketplace home `/`, `/orders`, `/join` (store self-signup). `shop/` — store page/cart/checkout for `/store/:slug` and `/stores/:slug` (market mode). `guest/` — QR flow `/qr/:code`.
+- `pages/` — Auth, Landing (`/qr`), Terms. `components/brand/DelivrLogo.tsx` — logo with "by ActionWeb".
 - `components/` — `ui/`, `store/`, `layout/` (AppShell, BottomNav), `notifications/`.
 - `merchant/` (with `pages/`), `driver/`, `admin/` — role-specific sub-apps.
 - `hooks/` — React Query hooks (e.g. `useDelivr.ts`).

@@ -1,15 +1,24 @@
 # Delivr
 
-QR-per-property delivery/takeaway πλατφόρμα για καταλύματα (guest σκανάρει QR →
-παραγγέλνει από τοπικά καταστήματα· προμήθεια + συνδρομές). Live:
-https://delivr-ten.vercel.app · Supabase `ifgzciraogohycuvujip`.
-Status & εκκρεμότητες: [`ROADMAP.md`](ROADMAP.md).
+Delivery & take away πλατφόρμα με **δύο γραμμές προϊόντος** (απόφαση George
+30/10/2026 — **μην το στενέψεις ξανά** σε «μόνο καταλύματα»):
+**A. Delivr Stores** = ανοιχτό marketplace + SaaS σαν το efood (όποιο μαγαζί
+γράφεται μόνο του στο `/join`· ο πελάτης διαλέγει περιοχή στο `/` και
+παραγγέλνει χωρίς λογαριασμό) και **B. Delivr QR** = guest καταλύματος
+σκανάρει QR → παραγγέλνει από τοπικά καταστήματα. Έσοδα: προμήθεια +
+συνδρομές. Live: https://delivr-ten.vercel.app · Supabase `ifgzciraogohycuvujip`.
+Status & εκκρεμότητες: [`ROADMAP.md`](ROADMAP.md) · σχέδιο επαναφοράς:
+[`docs/RESTORE-PLAN.md`](docs/RESTORE-PLAN.md).
 
 ## Stack
 
 - **Vite + React 18 + TS** SPA (default branch **master**). EL/EN μέσω
   `src/lib/i18n`. React Query + Supabase JS.
-- **Το πραγματικό προϊόν** = guest flow `src/guest/**` (routes `/qr/:code/*`,
+- **A. Marketplace** `src/market/**` (routes `/`, `/stores/:slug/*`,
+  `/orders`, `/join`) — RPCs `delivr_marketplace_*`, `delivr_public_plans`,
+  `delivr_register_store` (migrations 014/015). Το `/stores/:slug` είναι το
+  `src/shop/**` σε `market` mode (`shopMode.tsx`, channel `app`).
+- **B. QR guest flow** `src/guest/**` (routes `/qr/:code/*`, `/qr` landing,
   `/t/:token`, `/s/:token`) — όλα μέσω `delivr_*` SECURITY DEFINER RPCs
   (migrations 005-007). ΠΟΤΕ τιμολόγηση στον client.
 - **Standalone store** `src/shop/**` (route `/store/:slug`): το ίδιο flow για

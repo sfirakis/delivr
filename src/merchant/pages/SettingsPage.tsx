@@ -3,9 +3,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { Card, Field, TextInput, TextArea, CheckRow } from '@/admin/ui'
-import { useZones } from '@/admin/hooks'
+import { ZonesEditor } from '@/admin/pages/StoresPage'
 import type { AdminStore } from '@/admin/hooks'
-import { money } from '@/lib/format'
 import { Spinner } from '@/components/ui'
 
 const DAYS = ['Κυριακή', 'Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή', 'Σάββατο']
@@ -17,7 +16,6 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
   const [form, setForm] = useState<Partial<AdminStore>>(store)
   const [saving, setSaving] = useState(false)
   const [hours, setHours] = useState<Hours[]>([])
-  const zonesQ = useZones(store.id)
 
   useEffect(() => { setForm(store) }, [store])
 
@@ -55,6 +53,11 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
         supports_delivery: form.supports_delivery, supports_takeaway: form.supports_takeaway,
         accepts_cash: form.accepts_cash, auto_accept: form.auto_accept,
         is_open: form.is_open,
+        // Sales channels (migration 014). Sent only when the columns exist, so
+        // this screen keeps saving on a database without 014.
+        ...(store.marketplace_listed !== undefined
+          ? { marketplace_listed: form.marketplace_listed, standalone_enabled: form.standalone_enabled }
+          : {}),
         updated_at: new Date().toISOString(),
       }).eq('id', store.id)
       if (error) throw new Error(error.message)
@@ -87,6 +90,30 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
                     onChange={v => set({ supports_takeaway: v })} />
         </div>
       </Card>
+
+      {/* Where the shop sells — only once migration 014 is live (the column exists). */}
+      {store.marketplace_listed !== undefined && (
+        <Card title="Πού πουλάς">
+          <div className="grid md:grid-cols-2 gap-1">
+            <CheckRow label="Delivr Stores (marketplace)"
+                      hint="Οι πελάτες σε βρίσκουν στην αρχική του Delivr όταν διαλέξουν περιοχή που εξυπηρετείς"
+                      checked={form.marketplace_listed ?? false}
+                      onChange={v => set(v ? { marketplace_listed: true, standalone_enabled: true } : { marketplace_listed: false })} />
+            <CheckRow label="Δικός σου σύνδεσμος παραγγελιών"
+                      hint="Για Instagram, Google, βιτρίνα — παραγγελίες χωρίς να περάσουν από τη λίστα"
+                      checked={form.standalone_enabled ?? false}
+                      onChange={v => set(v ? { standalone_enabled: true } : { standalone_enabled: false, marketplace_listed: false })} />
+          </div>
+          {form.standalone_enabled && (
+            <p className="text-xs text-ink-2 mt-2 break-all">
+              Σύνδεσμος: <code>{`${(import.meta.env.VITE_APP_URL || window.location.origin).replace(/\/$/, '')}/store/${store.slug}`}</code>
+            </p>
+          )}
+          {store.onboarding_status !== 'active' && (
+            <p className="text-[11px] text-amber-700 mt-2">Εμφανίζεται στους πελάτες μόλις εγκριθεί το κατάστημα.</p>
+          )}
+        </Card>
+      )}
 
       <Card title="Βασικά στοιχεία">
         <div className="grid md:grid-cols-2 gap-3">
@@ -183,27 +210,7 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
       </Card>
 
       <Card title="Ζώνες παράδοσης">
-        {(zonesQ.data ?? []).length === 0 ? (
-          <p className="text-sm text-ink-3">
-            Δεν έχουν οριστεί ζώνες — χρησιμοποιείται η ακτίνα των {form.delivery_radius_km} km.
-            Οι ζώνες ορίζονται από τον διαχειριστή της πλατφόρμας.
-          </p>
-        ) : (
-          <table className="dash-table">
-            <thead><tr><th>Ζώνη</th><th>Περιοχή</th><th>Τ.Κ.</th><th>Μεταφορικά</th><th>Ελάχιστο</th></tr></thead>
-            <tbody>
-              {(zonesQ.data ?? []).map(z => (
-                <tr key={z.id}>
-                  <td className="font-semibold">{z.name}</td>
-                  <td>{z.area ?? '—'}</td>
-                  <td>{z.postal_code ?? '—'}</td>
-                  <td>{money(z.delivery_fee)}</td>
-                  <td>{money(z.min_order)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+        <ZonesEditor storeId={store.id} audience="merchant" />
       </Card>
 
       <div className="flex justify-end pb-6">
