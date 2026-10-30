@@ -94,6 +94,7 @@
 - Online πληρωμές (Stripe/Viva) — τώρα σωστά «Μετρητά + Coming soon».
 - Realtime tracking (τώρα polling 20s — το postgres_changes δεν περνά RLS).
 - Deploy των υπόλοιπων 5 edge functions (μόνο notify-order είναι deployed).
+- Δίκτυο ανεξάρτητων διανομέων (απόφαση George 30/10, μόνο σχέδιο): [`docs/DRIVER-NETWORK-PLAN.md`](docs/DRIVER-NETWORK-PLAN.md).
 
 ## Log
 
