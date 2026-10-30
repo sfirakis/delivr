@@ -29,9 +29,12 @@
     market 11/11, join 7/7.
   - ✅ POS μέσω RPC (migration 016 `delivr_merchant_set_order_status`:
     μέλος καταστήματος + επιτρεπτά βήματα), DB 17/17, e2e merchant-pos 7/7.
-  - ⬜ **Go-live (θέλει OK George):** 014 → 015 → 016 στο live **πριν** το
-    deploy → merge → Vercel → έλεγχος deploy (`/`, `/qr/<κωδικός>`, POS,
-    `/join`) → άναμμα marketplace στα μαγαζιά από admin.
+  - ✅ **Go-live 30/10/2026 (OK George «βγάλ' το»):** 014 → 015 → 016 στη live
+    Supabase · merge PR #6 (ad5262c) → Vercel production READY · έλεγχος: `/` =
+    αγορά (0 μαγαζιά listed ακόμα), `/qr/SUNSET2A` ίδιο με πριν, `/join` με 3
+    πακέτα. ⬜ Άναμμα marketplace στα μαγαζιά από admin.
+    ⚠ Οι περιγραφές πακέτων στη βάση (subscription_plans) γράφουν την προμήθεια
+    (12% / 6% / καμία) → φαίνεται στο `/join`, αντίθετα με την προεπιλογή HQ.
   - Αποφάσεις, *προεπιλογή HQ — αλλάζει αν πει ο George*:
     - χειροκίνητη έγκριση νέων μαγαζιών;
     - η προμήθεια πλατφόρμας ΔΕΝ φαίνεται στο `/join`, μόνο οι τιμές των
