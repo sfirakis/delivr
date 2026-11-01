@@ -35,8 +35,8 @@ export default {
         danger:  '#DC2626',
       },
       fontFamily: {
-        display: ['Syne', 'sans-serif'],
-        body:    ['DM Sans', 'sans-serif'],
+        display: ['Verdana', 'Arial', 'sans-serif'],
+        body:    ['Verdana', 'Arial', 'sans-serif'],
         mono:    ['JetBrains Mono', 'monospace'],
       },
       borderRadius: {
