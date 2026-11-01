@@ -228,6 +228,8 @@ const KNOWN_CODES = [
   'ALREADY_REGISTERED', 'AUTH_REQUIRED', 'CITY_REQUIRED', 'SERVICE_REQUIRED', 'ADMIN_ONLY_FIELD',
   // Merchant POS — migration 016
   'BAD_TRANSITION', 'FORBIDDEN',
+  // Card in person — migration 018
+  'CARD_NOT_ACCEPTED', 'BAD_PAYMENT',
 ]
 
 function toApiError(error: { message?: string } | null): ApiError {
@@ -314,12 +316,16 @@ export interface PublicPlan {
   price: number
   billing_cycle: 'month' | 'year'
   trial_days: number
+  /** Orders per calendar month the plan covers (018). null = no limit. */
+  included_orders?: number | null
   features: string[]
 }
 
 export interface PublicPlans {
-  // Plan prices only — the platform commission is not published.
+  // Plan prices and order limits only — stores pay no commission (018).
   default: { auto_approve: boolean } | null
+  /** Above this many orders a month the price is agreed per store (018). */
+  custom_above?: number | null
   plans: PublicPlan[]
 }
 
@@ -333,6 +339,36 @@ export const getMarketStores = (area: { area?: string; postal_code?: string; cit
   })
 
 export const getPublicPlans = () => rpc<PublicPlans>('delivr_public_plans')
+
+/** What a customer may pay with at a store — in person, never online (018). */
+export interface StorePaymentOptions { cash: boolean; card_pickup: boolean; card_delivery: boolean }
+
+const CASH_ONLY: StorePaymentOptions = { cash: true, card_pickup: false, card_delivery: false }
+
+/**
+ * Falls back to cash only when the database predates 018 (no RPC yet): the
+ * old delivr_place_order would refuse a card anyway.
+ */
+export const getStorePaymentOptions = (storeId: string) =>
+  rpc<StorePaymentOptions | null>('delivr_store_payment_options', { p_store_id: storeId })
+    .then(o => (o && typeof o.cash === 'boolean' ? o : CASH_ONLY))
+    .catch(() => CASH_ONLY)
+
+/** The store's own monthly order meter (merchant app, migration 018). */
+export interface PlanUsage {
+  month: string
+  next_month: string
+  orders: number
+  limit: number | null
+  pct: number | null
+  state: 'ok' | 'near' | 'over' | 'custom'
+  top_limit: number | null
+  plan: { id: string; name: string; price: number } | null
+  next_plan: { id: string; name: string; price: number; billing_cycle: string; included_orders: number } | null
+}
+
+export const getStorePlanUsage = (storeId: string) =>
+  rpc<PlanUsage>('delivr_store_plan_usage', { p_store_id: storeId })
 
 export interface StoreSignup {
   name: string
@@ -362,7 +398,8 @@ export const placeOrder = (input: {
   guest: { name: string; phone: string; email?: string | null; notes?: string | null; delivery_notes?: string | null }
   promo?: string | null
   scheduledFor?: string | null
-  payment?: string
+  /** 'cash' (default) or 'card' — paid to the store in person (018). */
+  payment?: 'cash' | 'card'
   channel?: string
   /** Only for a store-link order: where the customer wants it delivered. */
   address?: OrderAddress | null

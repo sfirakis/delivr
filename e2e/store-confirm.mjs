@@ -9,6 +9,7 @@ const OUT = process.env.OUT_DIR || '/tmp/claude-0/-home-user-delivr/8f1d7cd8-f06
 const TOKEN = 'abc123def456abc123def456abc12345'
 
 let status = 'pending'
+let pay = 'cash'   // 018: cash | card, paid to the store in person
 const actions = []
 
 const order = () => ({
@@ -18,7 +19,7 @@ const order = () => ({
   scheduled_for: null, prep_minutes: status === 'pending' ? null : 25,
   estimated_ready_at: new Date(Date.now() + 25 * 60000).toISOString(),
   subtotal: 25.8, discount_amount: 0, delivery_fee: 3.5, total: 29.3, platform_fee: 2.58,
-  payment_method: 'cash', payment_status: 'pending', promo_code: null,
+  payment_method: pay, payment_status: 'pending', promo_code: null,
   customer_notes: 'Κουδούνι Aegean Blue', delivery_notes: null,
   cancel_reason: status === 'cancelled' ? 'Πολύς φόρτος' : null,
   printed_at: null,
@@ -98,6 +99,8 @@ await step('Store link opens the order with no login at all', async () => {
   }
   if (!body.includes('χωρίς κρεμμύδι')) throw new Error('item note not surfaced to the kitchen')
   if (!body.includes('2,58')) throw new Error('platform commission not shown')
+  const p = await page.getByTestId('store-payment').innerText()
+  if (!p.includes('Μετρητά')) throw new Error(`payment: ${p}`)
 })
 await shot(`${OUT}/06-store-confirm.png`)
 
@@ -150,6 +153,19 @@ await step('Rejecting captures a reason', async () => {
   const reject = actions.find(a => a.p_action === 'reject')
   if (!reject) throw new Error('reject never reached the server')
   if (reject.p_reason !== 'Πολύς φόρτος') throw new Error(`reason not sent: ${reject.p_reason}`)
+})
+
+await step('A card order says «Κάρτα» on the store page and on the ticket (018)', async () => {
+  status = 'pending'; pay = 'card'
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.locator('.no-print').getByText('DLV-260824-0007').first().waitFor({ timeout: 8000 })
+  const p = await page.getByTestId('store-payment').innerText()
+  if (!p.includes('💳') || !p.includes('Κάρτα')) throw new Error(`payment: ${p}`)
+  const body = await page.locator('.no-print').innerText()
+  if (!body.includes('Κάρτα κατά την παράδοση')) throw new Error('long label missing')
+  const ticket = await page.locator('.print-ticket').innerHTML()
+  if (!/Κ[ΑΆ]ΡΤΑ ΚΑΤ[ΑΆ] ΤΗΝ ΠΑΡ[ΑΆ]ΔΟΣΗ/.test(ticket)) throw new Error('ticket payment missing')
+  pay = 'cash'
 })
 
 await step('An unknown store token fails gracefully', async () => {

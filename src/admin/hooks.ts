@@ -34,6 +34,8 @@ export interface AdminStore {
   supports_takeaway: boolean
   accepts_cash: boolean
   accepts_online: boolean
+  /** Courier carries a card terminal: delivery customers may pick «Κάρτα» (018). */
+  accepts_card_on_delivery?: boolean
   auto_accept: boolean
   billing_mode: 'inherit' | 'none' | 'flat' | 'commission'
   billing_value: number
@@ -533,6 +535,67 @@ export function useBillSubscriptions() {
       void qc.invalidateQueries({ queryKey: ['admin-charges'] })
       void qc.invalidateQueries({ queryKey: ['subscriptions'] })
       void qc.invalidateQueries({ queryKey: ['platform-stats'] })
+    },
+  })
+}
+
+// ============================================================
+// Monthly order limits per plan (migration 018)
+// ============================================================
+
+export interface PlanRef { id: string; name: string; price: number; billing_cycle?: string; included_orders?: number }
+
+export interface StorePlanUsageRow {
+  store_id: string
+  name: string
+  slug: string
+  onboarding_status: string
+  plan: PlanRef | null
+  /** false = no subscription, the store counts as Basic. */
+  subscribed: boolean
+  limit: number | null
+  orders: number
+  pct: number | null
+  state: 'ok' | 'near' | 'over' | 'custom'
+  suggested_plan: PlanRef | null
+  prev_orders: number
+  prev_state: 'ok' | 'near' | 'over' | 'custom'
+  /** Last month's overrun the next run will act on. */
+  pending: { kind: 'upgrade' | 'custom'; to_plan: PlanRef | null } | null
+  /** Already done for this month. */
+  applied: { kind: 'upgrade' | 'custom'; to_plan_name: string | null; at: string } | null
+}
+
+export interface AdminPlanUsage {
+  month: string
+  prev_month: string
+  top_limit: number | null
+  stores: StorePlanUsageRow[]
+}
+
+export function useAdminPlanUsage() {
+  return useQuery({
+    queryKey: ['admin-plan-usage'],
+    retry: false,
+    queryFn: async () => throwIf(await supabase.rpc('delivr_admin_plan_usage')) as AdminPlanUsage,
+  })
+}
+
+export interface PlanUpgradeRun {
+  ok: boolean
+  period: string
+  evaluated_month: string
+  upgraded: { store_id: string; name: string; orders: number; from: string; to: string; price: number }[]
+  custom: { store_id: string; name: string; orders: number; plan: string }[]
+}
+
+export function useApplyPlanUpgrades() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async () => throwIf(await supabase.rpc('delivr_apply_plan_upgrades')) as PlanUpgradeRun,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['admin-plan-usage'] })
+      void qc.invalidateQueries({ queryKey: ['subscriptions'] })
     },
   })
 }

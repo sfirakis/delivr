@@ -10,6 +10,7 @@ import { Card, Field, TextInput, TextArea, Select, CheckRow, Modal, StatCard, St
 import { money, dateOnly, num } from '@/lib/format'
 import { Spinner } from '@/components/ui'
 import { Composition, CHART_COLORS } from '../charts'
+import PlanLimitsCard from './PlanLimitsCard'
 
 const STATUS_LABEL: Record<string, string> = {
   trial: 'Δοκιμή', active: 'Ενεργή', past_due: 'Ληξιπρόθεσμη',
@@ -68,6 +69,10 @@ function PlanEditor({ plan, onClose }: { plan: Partial<SubscriptionPlan>; onClos
           <TextInput type="number" step="0.01" value={form.commission_value ?? 0}
                      disabled={!form.commission_mode || form.commission_mode === 'none'}
                      onChange={e => set({ commission_value: Number(e.target.value) })} />
+        </Field>
+        <Field label="Παραγγελίες τον μήνα" hint="Όριο πακέτου (κενό = χωρίς όριο). Ποτέ δεν μπλοκάρει παραγγελίες.">
+          <TextInput type="number" min={0} value={form.included_orders ?? ''}
+                     onChange={e => set({ included_orders: e.target.value === '' ? null : Number(e.target.value) })} />
         </Field>
         <Field label="Σειρά εμφάνισης">
           <TextInput type="number" value={form.sort_order ?? 0}
@@ -247,6 +252,8 @@ export default function SubscriptionsPage() {
                   tone={live.some(s => s.status === 'past_due') ? 'warning' : 'default'} />
       </div>
 
+      <PlanLimitsCard />
+
       {byPlan.length > 0 && (
         <Card title="Σύνθεση MRR ανά πακέτο">
           <Composition segments={byPlan} format={v => money(v)} />
@@ -282,7 +289,7 @@ export default function SubscriptionsPage() {
         <div className="overflow-x-auto">
           <table className="dash-table">
             <thead>
-              <tr><th>Πακέτο</th><th>Αφορά</th><th>Τιμή</th><th>Δοκιμή</th>
+              <tr><th>Πακέτο</th><th>Αφορά</th><th>Τιμή</th><th>Παραγγελίες/μήνα</th><th>Δοκιμή</th>
                   <th>Προμήθεια</th><th>Συνδρομητές</th><th>Ενεργό</th><th></th></tr>
             </thead>
             <tbody>
@@ -297,6 +304,7 @@ export default function SubscriptionsPage() {
                   <td className="font-semibold">
                     {num(p.price) > 0 ? `${money(p.price)}/${p.billing_cycle === 'year' ? 'έτος' : 'μήνα'}` : '—'}
                   </td>
+                  <td className="text-ink-2">{p.included_orders != null ? `έως ${p.included_orders}` : '—'}</td>
                   <td className="text-ink-2">{p.trial_days > 0 ? `${p.trial_days} ημ.` : '—'}</td>
                   <td className="text-xs">
                     {!p.commission_mode ? <span className="text-ink-3">ως πλατφόρμα</span>
@@ -324,7 +332,7 @@ export default function SubscriptionsPage() {
                 </tr>
               ))}
               {(plansQ.data ?? []).length === 0 && (
-                <tr><td colSpan={8} className="text-center text-ink-3 py-6">Κανένα πακέτο ακόμη.</td></tr>
+                <tr><td colSpan={9} className="text-center text-ink-3 py-6">Κανένα πακέτο ακόμη.</td></tr>
               )}
             </tbody>
           </table>
@@ -364,7 +372,7 @@ export default function SubscriptionsPage() {
               ))}
               {subs.length === 0 && (
                 <tr><td colSpan={8} className="text-center text-ink-3 py-6">
-                  Καμία συνδρομή — τα καταστήματα λειτουργούν με την προεπιλεγμένη προμήθεια.
+                  Καμία συνδρομή — τα καταστήματα χωρίς συνδρομή μετράνε στο δωρεάν πακέτο.
                 </td></tr>
               )}
             </tbody>
