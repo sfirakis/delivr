@@ -152,12 +152,12 @@ WHERE g.name = 'Extras'
 INSERT INTO subscription_plans (name, description, audience, price, billing_cycle, trial_days,
   commission_mode, commission_value, features, sort_order)
 VALUES
- ('Basic','Παρουσία στην πλατφόρμα, απεριόριστες παραγγελίες, προμήθεια 12%','store',0,'month',0,
+ ('Basic','Παρουσία στην πλατφόρμα, απεριόριστες παραγγελίες','store',0,'month',0,
   'commission',12,'["Απεριόριστες παραγγελίες","Email + WhatsApp","Εκτύπωση"]'::jsonb,1),
- ('Pro','Μηνιαία συνδρομή με μειωμένη προμήθεια 6%','store',29.00,'month',14,
-  'commission',6,'["Όλα του Basic","Προμήθεια 6%","Προβολή στην κορυφή","Στατιστικά"]'::jsonb,2),
- ('Zero Commission','Σταθερή συνδρομή, καμία προμήθεια ανά παραγγελία','store',79.00,'month',14,
-  'none',0,'["Όλα του Pro","0% προμήθεια","Προτεραιότητα υποστήριξης"]'::jsonb,3),
+ ('Pro','Μηνιαία συνδρομή με προβολή στην κορυφή και στατιστικά','store',29.00,'month',14,
+  'commission',6,'["Όλα του Basic","Προβολή στην κορυφή","Στατιστικά"]'::jsonb,2),
+ ('Premium','Σταθερή μηνιαία συνδρομή με προτεραιότητα υποστήριξης','store',79.00,'month',14,
+  'none',0,'["Όλα του Pro","Προτεραιότητα υποστήριξης"]'::jsonb,3),
  ('Host Partner','Το κατάλυμα εισπράττει 8% σε κάθε παραγγελία','property',0,'month',0,
   'commission',8,'["QR κάρτα","8% απόδοση","Αναφορά εσόδων"]'::jsonb,1)
 ON CONFLICT DO NOTHING;
