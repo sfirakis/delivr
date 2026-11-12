@@ -80,6 +80,12 @@ const planUsage = () => ({
     { store_id: 's-cafe', name: 'Quiet Cafe', slug: 'quiet-cafe', onboarding_status: 'active',
       plan: { id: 'pl1', name: 'Basic', price: 0 }, subscribed: false, limit: 15, orders: 3, pct: 20,
       state: 'ok', suggested_plan: null, prev_orders: 4, prev_state: 'ok', pending: null, applied: null },
+    // Seasonal shop: Premium in summer, 120 orders last month → down to Plus.
+    { store_id: 's-beach', name: 'Beach Bar', slug: 'beach-bar', onboarding_status: 'active',
+      plan: { id: 'pl4', name: 'Premium', price: 150 }, subscribed: true, limit: 500, orders: 30, pct: 6,
+      state: 'ok', suggested_plan: null, prev_orders: 120, prev_state: 'ok',
+      pending: planUsageApplied ? null : { kind: 'downgrade', to_plan: PLUS },
+      applied: planUsageApplied ? { kind: 'downgrade', to_plan_name: 'Plus', at: new Date().toISOString() } : null },
   ],
 })
 
@@ -182,6 +188,7 @@ await page.route('**/*.supabase.co/**', async route => {
       planUsageApplied = true
       return json(route, { ok: true, period: '2026-11-01', evaluated_month: '2026-10-01',
         upgraded: [{ store_id: STORE_ID, name: 'Souvlaki Corner', orders: 20, from: 'Basic', to: 'Pro', price: 39 }],
+        downgraded: [{ store_id: 's-beach', name: 'Beach Bar', orders: 120, from: 'Premium', to: 'Plus', price: 79 }],
         custom: [{ store_id: 's-grill', name: 'Big Grill', orders: 610, plan: 'Premium' }] })
     }
     if (fn === 'delivr_bill_subscriptions') {
@@ -296,7 +303,7 @@ await step('Order limits (018): stores near/over their plan, suggested plan, «�
   const table = page.getByTestId('plan-limits-table')
   await table.waitFor()
   const t = await table.innerText()
-  for (const s of ['Souvlaki Corner', '13 / 15', 'Pizza Napoli', '131 / 100', 'Plus', 'Big Grill', 'Κατόπιν συμφωνίας', '⏳ → Pro'])
+  for (const s of ['Souvlaki Corner', '13 / 15', 'Pizza Napoli', '131 / 100', 'Plus', 'Big Grill', 'Κατόπιν συμφωνίας', '⏳ ↑ Pro', 'Beach Bar', '⏳ ↓ Plus'])
     if (!t.includes(s)) throw new Error(`missing "${s}" in limits table`)
   if (t.includes('Quiet Cafe')) throw new Error('a store well within its limit is listed by default')
   await page.getByText('Όλα τα καταστήματα').click()
@@ -308,9 +315,10 @@ await step('Order limits (018): stores near/over their plan, suggested plan, «�
 
 await step('«Εφαρμογή αλλαγών πακέτων» runs delivr_apply_plan_upgrades and shows what was applied', async () => {
   await page.getByRole('button', { name: /Εφαρμογή αλλαγών πακέτων/ }).click()
-  await page.getByText(/Αλλαγές πακέτου: 1/).waitFor()
+  await page.getByText(/Αλλαγές πακέτου: ↑ 1 · ↓ 1/).waitFor()
   if (!captured.rpc.some(r => r.fn === 'delivr_apply_plan_upgrades')) throw new Error('apply never called')
-  await page.getByText('✓ → Pro').waitFor()
+  await page.getByText('✓ ↑ Pro').waitFor()
+  await page.getByText('✓ ↓ Plus').waitFor()
   if (SUB_SHOTS) await page.screenshot({ path: `${SUB_SHOTS}/admin-02-order-limits-applied.png`, timeout: 8000 }).catch(() => {})
 })
 

@@ -77,7 +77,7 @@ export default function AuthPage() {
           <label className="input-label">Email</label>
           <div className="input-wrapper">
             <span className="text-ink-3">✉️</span>
-            <input className="input-field" type="email" placeholder="you@email.com"
+            <input className="input-field" type="email" placeholder="Το email σου"
               value={form.email} onChange={update('email')} autoComplete="email" />
           </div>
         </div>

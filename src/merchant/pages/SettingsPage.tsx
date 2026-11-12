@@ -127,7 +127,7 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
           <Field label="Email παραγγελιών" hint="Εκεί φτάνει το email με τον σύνδεσμο επιβεβαίωσης">
             <TextInput type="email" value={form.order_email ?? ''} onChange={e => set({ order_email: e.target.value })} />
           </Field>
-          <Field label="WhatsApp παραγγελιών" hint="Διεθνής μορφή, π.χ. +306900000000">
+          <Field label="WhatsApp παραγγελιών" hint="Διεθνής μορφή: +30 και ο αριθμός, χωρίς κενά">
             <TextInput value={form.order_whatsapp ?? ''} onChange={e => set({ order_whatsapp: e.target.value })} />
           </Field>
           <div className="md:col-span-2">

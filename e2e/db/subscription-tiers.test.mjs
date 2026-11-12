@@ -10,7 +10,11 @@
  *      delivery only when the store allows it, shown on /t and /s,
  *   5. the monthly meter (Europe/Athens), never blocks an order,
  *   6. delivr_apply_plan_upgrades: smallest plan that fits, > 500 flagged,
- *      idempotent, admin/service only; admin view; billing picks the new price.
+ *      idempotent, admin/service only; admin view; billing picks the new price,
+ *   7. … and down again (seasonal shop: Premium → Plus → Pro → Basic → Plus),
+ *      not on a partial first month, Basic never billed,
+ *   8. «Προβολή στην κορυφή» from the plan (Plus/Premium) in the marketplace
+ *      and the QR list, admin flag on top, gone when the plan goes.
  *
  *   node e2e/db/subscription-tiers.test.mjs
  */
@@ -331,6 +335,141 @@ await step('November billing charges the new prices (39 € Pro, 79 € Plus)', 
 await step('Store-side order charges stayed at zero through all of this', async () => {
   const r = await one(db, `SELECT coalesce(sum(amount), 0) AS s FROM order_charges WHERE kind = 'order' AND party_type = 'store'`)
   assert(n(r.s) === 1, `store order charges ${r.s} (only the 1 € explicit-override order)`)
+})
+
+// ── 7. Downgrade (HQ review 12/11/2026: seasonal shops) ──────
+// Beach Bar is on Premium since June 2027: August 300 orders (Premium fits,
+// stays), September 120 → Plus, October 40 → Pro, November 5 → Basic, and
+// back up to Plus after a 200-order December. New Taverna picked Pro on
+// 20/10/2027: no move down on that partial October, Basic after November.
+const S5 = '10000000-0000-4000-8000-000000000005'
+const S6 = '10000000-0000-4000-8000-000000000006'
+await db.exec(`
+  INSERT INTO stores (id, name, slug, category, address, city, lat, lng, delivery_fee, min_order_amount, standalone_enabled, rating)
+  VALUES ('${S5}', 'Beach Bar', 'beach-bar', 'cafe', 'Παραλία 1', 'Άγιος Νικόλαος', 35.19, 25.72, 2, 0, true, 3.0),
+         ('${S6}', 'New Taverna', 'new-taverna', 'restaurant', 'Οδός 6', 'Άγιος Νικόλαος', 35.19, 25.72, 2, 0, true, 4.0);
+  INSERT INTO store_hours (store_id, day_of_week, open_time, close_time, is_closed)
+  SELECT s, d, '00:00', '23:59', false FROM unnest(ARRAY['${S5}','${S6}']::uuid[]) s, generate_series(0, 6) d
+  ON CONFLICT DO NOTHING;
+  INSERT INTO subscriptions (plan_id, party_type, party_id, status, price, started_on) VALUES
+    ('${P_PREM}', 'store', '${S5}', 'active', 150, '2027-06-01'),
+    ('${P_PRO}',  'store', '${S6}', 'active', 39,  '2027-10-20');
+`)
+await bulk(S5, 300, '2027-08-10 12:00:00+03')
+await bulk(S5, 120, '2027-09-10 12:00:00+03')
+await bulk(S5, 40, '2027-10-10 12:00:00+03')
+await bulk(S5, 5, '2027-11-10 12:00:00+02')
+await bulk(S5, 200, '2027-12-10 12:00:00+02')
+await bulk(S6, 3, '2027-10-25 12:00:00+03')
+await bulk(S6, 3, '2027-11-10 12:00:00+02')
+
+const run = period => as(db, 'authenticated', ADMIN, () => one(db, `SELECT delivr_apply_plan_upgrades($1) AS j`, [period])).then(r => r.j)
+const subOf = store => one(db, `SELECT s.status, s.price, s.notes, p.name FROM subscriptions s
+                                 JOIN subscription_plans p ON p.id = s.plan_id
+                                WHERE s.party_type = 'store' AND s.party_id = $1 AND s.status <> 'cancelled'`, [store])
+const names = list => list.map(x => x.name)
+
+await step('Down: a busy August keeps Premium (300 fits only Premium); idle stores go back to Basic', async () => {
+  const r = await run('2027-09-01')
+  assert(!names(r.upgraded).includes('Beach Bar') && !names(r.downgraded).includes('Beach Bar'), JSON.stringify(r))
+  assert((await subOf(S5)).name === 'Premium', 'Beach Bar moved')
+  // Pizza Napoli (Plus since 11/2026) had no August orders → the free plan, never billed.
+  const pn = r.downgraded.find(d => d.name === 'Pizza Napoli')
+  assert(pn?.from === 'Plus' && pn?.to === 'Basic' && n(pn.price) === 0, JSON.stringify(r.downgraded))
+})
+await step('Down: admin view shows the pending move down before the run', async () => {
+  const v = await as(db, 'authenticated', ADMIN, () => one(db, `SELECT delivr_admin_plan_usage('2027-10-01') AS j`))
+  const bb = v.j.stores.find(s => s.name === 'Beach Bar')
+  assert(bb.pending?.kind === 'downgrade' && bb.pending?.to_plan?.name === 'Plus' && bb.prev_orders === 120, JSON.stringify(bb))
+})
+await step('Down: 120 orders in September → Plus 79 € from October (smallest plan that fits)', async () => {
+  const r = await run('2027-10-01')
+  const bb = r.downgraded.find(d => d.name === 'Beach Bar')
+  assert(bb?.from === 'Premium' && bb?.to === 'Plus' && n(bb.price) === 79, JSON.stringify(r))
+  const s = await subOf(S5)
+  assert(s.name === 'Plus' && n(s.price) === 79 && s.status === 'active' && s.notes.includes('Premium → Plus'), JSON.stringify(s))
+  const c = await one(db, `SELECT kind, orders_counted FROM store_plan_changes WHERE store_id = $1 AND period_start = '2027-10-01'`, [S5])
+  assert(c.kind === 'downgrade' && c.orders_counted === 120, JSON.stringify(c))
+})
+await step('Down: running it again changes nothing', async () => {
+  const r = await run('2027-10-01')
+  assert(r.downgraded.length === 0 && r.upgraded.length === 0 && r.custom.length === 0, JSON.stringify(r))
+})
+await step('Down: 40 in October → Pro 39 €; a shop that started mid-October stays (partial month)', async () => {
+  const r = await run('2027-11-01')
+  assert(r.downgraded.find(d => d.name === 'Beach Bar')?.to === 'Pro', JSON.stringify(r.downgraded))
+  assert(!names(r.downgraded).includes('New Taverna'), 'moved on a partial month')
+  assert((await subOf(S6)).name === 'Pro', 'New Taverna moved')
+})
+await step('Down: 5 in November → Basic (0 €); New Taverna after its first full month → Basic too', async () => {
+  const r = await run('2027-12-01')
+  const d = Object.fromEntries(r.downgraded.map(x => [x.name, x]))
+  assert(d['Beach Bar']?.to === 'Basic' && d['New Taverna']?.to === 'Basic', JSON.stringify(r.downgraded))
+  assert(n((await subOf(S5)).price) === 0, 'Basic price')
+})
+await step('Down: December billing charges nothing to a store on Basic', async () => {
+  await as(db, 'authenticated', ADMIN, () => db.query(`SELECT delivr_bill_subscriptions('2027-12-01')`))
+  const r = await one(db, `SELECT count(*) AS c FROM order_charges WHERE kind = 'subscription' AND period_start = '2027-12-01'
+                             AND party_id IN ('${S5}', '${S6}')`)
+  assert(n(r.c) === 0, `charges ${r.c}`)
+})
+await step('And back up: 200 orders in December → Plus from January (same subscription)', async () => {
+  const r = await run('2028-01-01')
+  assert(r.upgraded.find(u => u.name === 'Beach Bar')?.to === 'Plus', JSON.stringify(r.upgraded))
+  const s = await subOf(S5)
+  assert(s.name === 'Plus' && n(s.price) === 79, JSON.stringify(s))
+  const c = await one(db, `SELECT count(*) AS c FROM subscriptions WHERE party_id = $1`, [S5])
+  assert(n(c.c) === 1, `subscriptions ${c.c}`)
+})
+
+// ── 8. «Προβολή στην κορυφή» from the plan ───────────────────
+await step('Promotion: Plus and Premium carry it, Basic and Pro do not', async () => {
+  const rows = (await db.query(`SELECT name, promoted FROM subscription_plans WHERE audience = 'store' ORDER BY sort_order`)).rows
+  assert(rows.map(r => `${r.name}:${r.promoted}`).join() === 'Basic:false,Pro:false,Plus:true,Premium:true', JSON.stringify(rows))
+})
+await db.exec(`
+  UPDATE stores SET marketplace_listed = true WHERE id IN ('${S1}', '${S4}', '${S5}');
+  UPDATE stores SET rating = 4.9 WHERE id = '${S1}';
+  UPDATE stores SET rating = 4.5 WHERE id = '${S4}';
+`)
+const market = () => as(db, 'anon', null, () => one(db, `SELECT delivr_marketplace_stores() AS j`)).then(r => r.j)
+await step('Promotion: a Plus store is listed first in the marketplace without any admin action', async () => {
+  const j = await market()
+  assert(j[0]?.name === 'Beach Bar' && j[0].is_promoted === true, JSON.stringify(j.map(s => [s.name, s.is_promoted])))
+  assert(j.find(s => s.name === 'Souvlaki Corner').is_promoted === false, 'Basic store promoted')
+  const raw = await one(db, `SELECT is_promoted FROM stores WHERE id = $1`, [S5])
+  assert(raw.is_promoted === false, 'stores.is_promoted was written')
+})
+await step('Promotion: the admin flag still works on top (manual override)', async () => {
+  await db.exec(`UPDATE stores SET is_promoted = true WHERE id = '${S4}'`)
+  const j = await market()
+  assert(j.slice(0, 2).map(s => s.name).join() === 'Quiet Cafe,Beach Bar', JSON.stringify(j.map(s => s.name)))
+  assert(j.slice(0, 2).every(s => s.is_promoted) && j[2].name === 'Souvlaki Corner', JSON.stringify(j.map(s => [s.name, s.is_promoted])))
+})
+await step('Promotion: the QR store list (line B) puts plan-promoted stores first too', async () => {
+  const rows = (await as(db, 'anon', null, () => db.query(`SELECT store_name, is_promoted, is_open_now FROM delivr_stores_for_property('VILLA1')`))).rows
+  const bb = rows.find(r => r.store_name === 'Beach Bar')
+  assert(bb?.is_promoted === true, JSON.stringify(rows))
+  const open = rows.filter(r => r.is_open_now)
+  const lastPromoted = open.map(r => r.is_promoted).lastIndexOf(true)
+  const firstPlain = open.map(r => r.is_promoted).indexOf(false)
+  assert(firstPlain === -1 || lastPromoted < firstPlain, JSON.stringify(rows.map(r => [r.store_name, r.is_promoted])))
+})
+await step('Promotion: follows the plan — down to Pro, or a cancelled subscription, and it is gone', async () => {
+  await db.exec(`UPDATE subscriptions SET plan_id = '${P_PRO}', price = 39 WHERE party_id = '${S5}'`)
+  let j = await market()
+  assert(j.find(s => s.name === 'Beach Bar').is_promoted === false && j.at(-1).name === 'Beach Bar', JSON.stringify(j.map(s => s.name)))
+  await db.exec(`UPDATE subscriptions SET plan_id = '${P_PREM}', price = 150 WHERE party_id = '${S5}'`)
+  j = await market()
+  assert(j.find(s => s.name === 'Beach Bar').is_promoted === true, 'Premium not promoted')
+  await db.exec(`UPDATE subscriptions SET status = 'cancelled', cancelled_at = now() WHERE party_id = '${S5}'`)
+  j = await market()
+  assert(j.find(s => s.name === 'Beach Bar').is_promoted === false, 'cancelled still promoted')
+})
+await step('Promotion helper and plan-move helper are not callable from the API', async () => {
+  for (const sql of [`SELECT delivr_store_promoted('${S5}', false)`, `SELECT * FROM delivr_store_plan_move('${S5}', '2027-10-01')`])
+    await rejects(as(db, 'anon', null, () => db.query(sql)), 'permission denied')
+  await rejects(as(db, 'authenticated', STAFF, () => db.query(`SELECT * FROM delivr_store_plan_move('${S1}', '2027-10-01')`)), 'permission denied')
 })
 
 console.log(failed ? `\n${failed} failed, ${passed} passed` : `\nAll ${passed} subscription-tier DB checks passed`)

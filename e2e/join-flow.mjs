@@ -138,18 +138,30 @@ const shot = async (page, name, fullPage = false) => {
     await page.getByText('Βάλε το κατάστημά σου στο Delivr').waitFor()
     await page.getByText('Pro').first().waitFor()
     const b = await page.locator('body').innerText()
-    for (const re of [/39,00\s€\/μήνα/, /79,00\s€\/μήνα/, /150,00\s€\/μήνα/]) {
+    // Paid plans before VAT (HQ default; BILLING_MAP decision 4 pending).
+    for (const re of [/39,00\s€\/μήνα \+ ΦΠΑ/, /79,00\s€\/μήνα \+ ΦΠΑ/, /150,00\s€\/μήνα \+ ΦΠΑ/]) {
       if (!re.test(b)) throw new Error(`price missing: ${re}`)
     }
+    if (/Δωρεάν \+ ΦΠΑ/.test(b)) throw new Error('VAT note on the free plan')
+    // The marketing review's texts (12/11/2026).
+    const NO_COMMISSION = 'Χωρίς προμήθεια: κρατάς όλη την αξία κάθε παραγγελίας. Πληρώνεις μόνο μηνιαία συνδρομή.'
+    const EXAMPLE = 'Παράδειγμα: 100 παραγγελίες των 15 € = 1.500 €. Με προμήθεια 25–30% θα πλήρωνες 375–450 €. Με το Pro: 39 €.'
     for (const s of ['by ActionWeb', 'Basic', 'Plus', 'Premium', '14 μέρες δωρεάν δοκιμή',
                      'Έως 15 παραγγελίες τον μήνα', 'Έως 100 παραγγελίες τον μήνα', 'Έως 250 παραγγελίες τον μήνα',
                      'Έως 500 παραγγελίες τον μήνα', 'Πάνω από 500 παραγγελίες;', 'Κατόπιν συμφωνίας',
-                     'μετρητά ή κάρτα', 'οι παραγγελίες δεν σταματούν']) {
+                     'μετρητά ή κάρτα', 'οι παραγγελίες δεν σταματούν', 'και αν πέσουν, γυρνάς σε μικρότερο',
+                     NO_COMMISSION, EXAMPLE, 'Ερωτήσεις; delivr@actionweb.gr']) {
       if (!b.includes(s)) throw new Error(`missing "${s}"`)
     }
+    const mail = await page.getByTestId('join-contact').locator('a').getAttribute('href')
+    if (mail !== 'mailto:delivr@actionweb.gr') throw new Error(`contact link ${mail}`)
     if (/online πληρωμή έρχεται σύντομα/.test(b)) throw new Error('"online payment soon" is back')
     if (/Visa|PCI/.test(b)) throw new Error('fake payment claims are back')
-    if (/προμήθει|ανά παραγγελία|\d\s?%/.test(b)) throw new Error('platform commission is shown publicly')
+    if (/you@email\.com|6900000000/.test(b)) throw new Error('placeholder contact shown')
+    // Apart from «no commission» and the market example, no commission or % anywhere
+    // (our own platform fee must never show).
+    const rest = b.replace(NO_COMMISSION, '').replace(EXAMPLE, '')
+    if (/προμήθει|ανά παραγγελία|\d\s?%/.test(rest)) throw new Error('platform commission is shown publicly')
   })
   await shot(page, 'join-m-01-offer')
   if (SUB_SHOTS) {

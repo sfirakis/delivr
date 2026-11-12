@@ -38,6 +38,16 @@
     ξεπέρασε το όριο τον προηγούμενο μήνα πάει στο μικρότερο πακέτο που το
     καλύπτει· >500 μόνο σήμανση. Admin → Συνδρομές → «Όρια παραγγελιών» +
     κουμπί «Εφαρμογή αλλαγών πακέτων». Μία αλλαγή/μαγαζί/μήνα (ασφαλές ×2).
+  - ✅ **Προσθήκες review marketing 12/11/2026** (`hq/departments/delivr/ONBOARDING_READY.md`):
+    (1) η ίδια `delivr_apply_plan_upgrades()` κατεβάζει κιόλας: μικρότερο πακέτο
+    που χωρά τον προηγούμενο μήνα (εποχικά μαγαζιά), μόνο μετά από ολόκληρο μήνα
+    στο πακέτο, `kind = 'downgrade'`· (2) «Προβολή στην κορυφή» αυτόματα για
+    Plus/Premium (`subscription_plans.promoted` → πρώτα σε marketplace και QR
+    λίστα), το χειροκίνητο `is_promoted` του admin μένει· (3) `/join`: «Χωρίς
+    προμήθεια…», παράδειγμα 1.500 €, «+ ΦΠΑ» (προεπιλογή HQ, απόφαση 4 του
+    BILLING_MAP εκκρεμεί), επαφή `delivr@actionweb.gr` (το mailbox το ανοίγει ο
+    George)· διόρθωση βοήθειας «ζώνες από τον διαχειριστή». DB 87/87 (tiers 46),
+    e2e 70/70.
   - ✅ Πληρωμή «Μετρητά» ή «Κάρτα» (EL+EN) σε QR/link/marketplace: take away
     κάρτα πάντα (ταμείο)· delivery κάρτα μόνο με `stores.accepts_card_on_delivery`
     (ρύθμιση merchant, default off)· έλεγχος και στον server (`CARD_NOT_ACCEPTED`).

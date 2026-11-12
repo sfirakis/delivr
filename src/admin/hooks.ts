@@ -560,11 +560,14 @@ export interface StorePlanUsageRow {
   suggested_plan: PlanRef | null
   prev_orders: number
   prev_state: 'ok' | 'near' | 'over' | 'custom'
-  /** Last month's overrun the next run will act on. */
-  pending: { kind: 'upgrade' | 'custom'; to_plan: PlanRef | null } | null
+  /** Last month's move (up, down or «custom») the next run will act on. */
+  pending: { kind: PlanMoveKind; to_plan: PlanRef | null } | null
   /** Already done for this month. */
-  applied: { kind: 'upgrade' | 'custom'; to_plan_name: string | null; at: string } | null
+  applied: { kind: PlanMoveKind; to_plan_name: string | null; at: string } | null
 }
+
+/** upgrade = over the limit · downgrade = needed less last month · custom = over the top plan (018). */
+export type PlanMoveKind = 'upgrade' | 'downgrade' | 'custom'
 
 export interface AdminPlanUsage {
   month: string
@@ -581,12 +584,16 @@ export function useAdminPlanUsage() {
   })
 }
 
+export interface PlanMove { store_id: string; name: string; orders: number; from: string; to: string; price: number }
+
 export interface PlanUpgradeRun {
   ok: boolean
   period: string
   evaluated_month: string
-  upgraded: { store_id: string; name: string; orders: number; from: string; to: string; price: number }[]
-  custom: { store_id: string; name: string; orders: number; plan: string }[]
+  upgraded: PlanMove[]
+  /** Moves down (seasonal shops). Missing on a database with an older 018 draft. */
+  downgraded?: PlanMove[]
+  custom:{ store_id: string; name: string; orders: number; plan: string }[]
 }
 
 export function useApplyPlanUpgrades() {

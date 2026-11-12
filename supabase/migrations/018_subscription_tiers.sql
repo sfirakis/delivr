@@ -10,10 +10,17 @@
 --   Premium 150 €/μήνα  έως 500
 --   > 500 → «Κατόπιν συμφωνίας» (no automatic plan; flagged for the admin)
 --
--- Orders are NEVER blocked or rejected because of the limit. A store that
--- went over its plan's limit in a calendar month (Europe/Athens) moves to
--- the smallest plan that fits from the next month, via
--- delivr_apply_plan_upgrades() — admin button or pg_cron (see the end).
+-- Orders are NEVER blocked or rejected because of the limit. Every month
+-- (calendar month, Europe/Athens) each store moves to the smallest plan
+-- that fits LAST month's orders, from the next month, via
+-- delivr_apply_plan_upgrades() — admin button or pg_cron (see the end):
+-- up when it went over its limit, and down again when it needs less
+-- (HQ review 12/11/2026: a seasonal Cretan shop must not keep paying
+-- Premium in November). Down only after a full month on the plan.
+--
+-- «Προβολή στην κορυφή» (Plus, Premium) is automatic: the plan carries it
+-- (subscription_plans.promoted) and the marketplace / QR store lists put
+-- those stores first. The admin's manual stores.is_promoted still works.
 --
 -- Payment stays in person, no money passes through the platform: the
 -- customer picks «Μετρητά» or «Κάρτα». Take away: card always (pay at the
@@ -29,6 +36,8 @@
 --     (per-store override → plan → platform). The property side (Host
 --     Partner, QR) is NOT touched.
 --   * delivr_public_plans: also returns included_orders.
+--   * delivr_marketplace_stores (014) / delivr_stores_for_property (005):
+--     same signatures and output, «promoted» = admin flag OR plan.
 -- Everything else is new. Safe to run twice.
 -- ============================================================
 
@@ -74,6 +83,15 @@ WHERE audience = 'store' AND name = 'Plus';
 UPDATE subscription_plans SET commission_mode = 'none', commission_value = 0, updated_at = now()
  WHERE audience = 'store' AND commission_mode IS DISTINCT FROM 'none';
 
+-- «Προβολή στην κορυφή»: a plan property, so it follows every plan change
+-- (up or down) without anyone touching the store. Plus and Premium have it.
+ALTER TABLE subscription_plans
+  ADD COLUMN IF NOT EXISTS promoted BOOLEAN NOT NULL DEFAULT false;
+COMMENT ON COLUMN subscription_plans.promoted IS
+  'Stores on this plan are listed first in the marketplace and the QR store list (018). stores.is_promoted = manual admin flag on top.';
+UPDATE subscription_plans SET promoted = true, updated_at = now()
+ WHERE audience = 'store' AND name IN ('Plus', 'Premium') AND NOT promoted;
+
 -- ── 2. Stores without a plan pay no commission either ────────
 -- (Explicit per-store overrides set by the admin still win, by design.)
 UPDATE platform_settings SET store_billing_mode = 'none', store_billing_value = 0 WHERE id = 1;
@@ -93,14 +111,14 @@ CREATE TABLE IF NOT EXISTS store_plan_changes (
   orders_counted INT  NOT NULL,              -- orders in the month before
   from_plan_id   UUID REFERENCES subscription_plans(id) ON DELETE SET NULL,
   to_plan_id     UUID REFERENCES subscription_plans(id) ON DELETE SET NULL,
-  kind           TEXT NOT NULL,              -- upgrade | custom (over the top plan: agree a price)
+  kind           TEXT NOT NULL,              -- upgrade | downgrade | custom (over the top plan: agree a price)
   created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-DO $$ BEGIN
-  ALTER TABLE store_plan_changes ADD CONSTRAINT store_plan_changes_kind_chk
-    CHECK (kind IN ('upgrade', 'custom'));
-EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+-- Drop + add so a database that ran an earlier draft of 018 gets 'downgrade' too.
+ALTER TABLE store_plan_changes DROP CONSTRAINT IF EXISTS store_plan_changes_kind_chk;
+ALTER TABLE store_plan_changes ADD CONSTRAINT store_plan_changes_kind_chk
+  CHECK (kind IN ('upgrade', 'downgrade', 'custom'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_store_plan_changes_period
   ON store_plan_changes (store_id, period_start);
@@ -629,6 +647,7 @@ DECLARE
   st      RECORD;
   pl      RECORD;
   ch      RECORD;
+  mv      RECORD;
   v_orders INT; v_prev_orders INT; v_state TEXT; v_prev_state TEXT;
   v_sugg  subscription_plans;
   v_pend  JSONB;
@@ -649,15 +668,18 @@ BEGIN
     ELSIF v_state = 'near' THEN v_sugg := delivr_plan_above(pl.plan_limit);
     END IF;
 
-    -- Last month's overrun not acted on yet = what the next run will do.
+    -- Last month's move not acted on yet (up, down or «custom») = what the
+    -- next run will do — the same rule the run uses.
     SELECT c.kind, c.created_at, tp.name AS to_name INTO ch
       FROM store_plan_changes c LEFT JOIN subscription_plans tp ON tp.id = c.to_plan_id
      WHERE c.store_id = st.id AND c.period_start = v_month;
     v_pend := NULL;
-    IF ch.kind IS NULL AND v_prev_state IN ('over', 'custom') THEN
-      v_pend := jsonb_build_object('kind', CASE WHEN v_prev_state = 'custom' THEN 'custom' ELSE 'upgrade' END,
-                                   'to_plan', delivr_plan_json(CASE WHEN v_prev_state = 'over'
-                                                THEN delivr_plan_for_orders(v_prev_orders) END));
+    IF ch.kind IS NULL THEN
+      SELECT * INTO mv FROM delivr_store_plan_move(st.id, v_month);
+      IF FOUND THEN
+        v_pend := jsonb_build_object('kind', mv.move_kind,
+                    'to_plan', (SELECT delivr_plan_json(tp) FROM subscription_plans tp WHERE tp.id = mv.to_plan_id));
+      END IF;
     END IF;
 
     v_out := v_out || jsonb_build_object(
@@ -681,24 +703,73 @@ BEGIN
 END $$;
 
 -- ── 8c. The month-start move (admin button / pg_cron) ────────
--- Looks at the month BEFORE p_period. A store over its limit moves to the
--- smallest plan that fits, from p_period on; over the top plan it is only
--- flagged («Κατόπιν συμφωνίας»). Never downgrades, never touches orders.
--- One store_plan_changes row per store per month makes re-runs harmless.
--- Callable by the admin, the service role and pg_cron — not by a store.
+-- What the run starting p_period would do for one store, looking at the
+-- month BEFORE p_period (one rule, shared by the run and the admin view):
+--   upgrade   — over its limit → smallest plan that fits;
+--   custom    — over the top plan → only flagged («Κατόπιν συμφωνίας»);
+--   downgrade — needed less → smallest plan that fits (seasonal shops,
+--               HQ review 12/11/2026). Only with a subscription that ran
+--               the WHOLE month (started_on ≤ 1st of that month), so a shop
+--               that joined or picked its plan mid-month is not moved down
+--               on a partial month. No subscription = Basic already.
+-- No row = stay.
+CREATE OR REPLACE FUNCTION delivr_store_plan_move(p_store_id UUID, p_period DATE)
+RETURNS TABLE (move_kind TEXT, orders_counted INT, from_plan_id UUID, from_plan_name TEXT,
+               to_plan_id UUID, subscription_id UUID)
+LANGUAGE plpgsql STABLE SET search_path = public AS $$
+DECLARE
+  v_eval    DATE := (date_trunc('month', p_period) - interval '1 month')::DATE;
+  v_top     INT  := delivr_plan_top_limit();
+  pl        RECORD;
+  tgt       subscription_plans;
+  v_orders  INT;
+  v_started DATE;
+BEGIN
+  SELECT * INTO pl FROM delivr_store_effective_plan(p_store_id);
+  IF pl.plan_id IS NULL OR pl.plan_limit IS NULL THEN RETURN; END IF;
+
+  v_orders := delivr_store_month_orders(p_store_id, v_eval);
+
+  IF v_orders > pl.plan_limit THEN
+    IF v_top IS NULL OR v_orders > v_top THEN
+      RETURN QUERY SELECT 'custom'::TEXT, v_orders, pl.plan_id, pl.plan_name, NULL::UUID, pl.subscription_id;
+      RETURN;
+    END IF;
+    tgt := delivr_plan_for_orders(v_orders);
+    IF tgt.id IS NOT NULL AND tgt.included_orders > pl.plan_limit THEN
+      RETURN QUERY SELECT 'upgrade'::TEXT, v_orders, pl.plan_id, pl.plan_name, tgt.id, pl.subscription_id;
+    END IF;
+    RETURN;
+  END IF;
+
+  IF pl.subscription_id IS NULL THEN RETURN; END IF;
+  SELECT sub.started_on INTO v_started FROM subscriptions sub WHERE sub.id = pl.subscription_id;
+  IF v_started IS NULL OR v_started > v_eval THEN RETURN; END IF;
+
+  tgt := delivr_plan_for_orders(v_orders);
+  IF tgt.id IS NOT NULL AND tgt.included_orders < pl.plan_limit THEN
+    RETURN QUERY SELECT 'downgrade'::TEXT, v_orders, pl.plan_id, pl.plan_name, tgt.id, pl.subscription_id;
+  END IF;
+END $$;
+
+-- Applies those moves from p_period on. Never touches orders. One
+-- store_plan_changes row per store per month makes re-runs harmless.
+-- (The name stays «upgrades» so the admin button and pg_cron keep working;
+-- it moves both ways.) Callable by the admin, the service role and
+-- pg_cron — not by a store.
 CREATE OR REPLACE FUNCTION delivr_apply_plan_upgrades(p_period DATE DEFAULT NULL)
 RETURNS JSONB LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   v_role   TEXT := coalesce(nullif(current_setting('role', true), ''), 'none');
   v_period DATE := date_trunc('month', coalesce(p_period, delivr_local_month()))::DATE;
   v_eval   DATE := (date_trunc('month', coalesce(p_period, delivr_local_month())) - interval '1 month')::DATE;
-  v_top    INT  := delivr_plan_top_limit();
   st       RECORD;
-  pl       RECORD;
+  mv       RECORD;
   tgt      subscription_plans;
-  v_orders INT;
   v_note   TEXT;
+  v_item   JSONB;
   v_up     JSONB := '[]'::JSONB;
+  v_down   JSONB := '[]'::JSONB;
   v_custom JSONB := '[]'::JSONB;
 BEGIN
   -- SECURITY DEFINER changes current_user, not the session's API role.
@@ -707,53 +778,149 @@ BEGIN
   END IF;
 
   FOR st IN SELECT s.id, s.name FROM stores s WHERE s.is_active ORDER BY s.name LOOP
-    SELECT * INTO pl FROM delivr_store_effective_plan(st.id);
-    IF pl.plan_id IS NULL OR pl.plan_limit IS NULL THEN CONTINUE; END IF;
-
-    v_orders := delivr_store_month_orders(st.id, v_eval);
-    IF v_orders <= pl.plan_limit THEN CONTINUE; END IF;
-
-    IF v_top IS NULL OR v_orders > v_top THEN
-      INSERT INTO store_plan_changes (store_id, period_start, orders_counted, from_plan_id, to_plan_id, kind)
-      VALUES (st.id, v_period, v_orders, pl.plan_id, NULL, 'custom')
-      ON CONFLICT (store_id, period_start) DO NOTHING;
-      IF FOUND THEN
-        v_custom := v_custom || jsonb_build_object('store_id', st.id, 'name', st.name,
-                                                   'orders', v_orders, 'plan', pl.plan_name);
-      END IF;
-      CONTINUE;
-    END IF;
-
-    tgt := delivr_plan_for_orders(v_orders);
-    IF tgt.id IS NULL OR tgt.included_orders <= pl.plan_limit THEN CONTINUE; END IF;
+    SELECT * INTO mv FROM delivr_store_plan_move(st.id, v_period);
+    IF NOT FOUND THEN CONTINUE; END IF;
 
     INSERT INTO store_plan_changes (store_id, period_start, orders_counted, from_plan_id, to_plan_id, kind)
-    VALUES (st.id, v_period, v_orders, pl.plan_id, tgt.id, 'upgrade')
+    VALUES (st.id, v_period, mv.orders_counted, mv.from_plan_id, mv.to_plan_id, mv.move_kind)
     ON CONFLICT (store_id, period_start) DO NOTHING;
     IF NOT FOUND THEN CONTINUE; END IF;
 
-    v_note := format('Αυτόματη αλλαγή %s → %s από %s (%s παραγγελίες τον %s)',
-                     pl.plan_name, tgt.name, to_char(v_period, 'MM/YYYY'), v_orders, to_char(v_eval, 'MM/YYYY'));
+    IF mv.move_kind = 'custom' THEN
+      v_custom := v_custom || jsonb_build_object('store_id', st.id, 'name', st.name,
+                                                 'orders', mv.orders_counted, 'plan', mv.from_plan_name);
+      CONTINUE;
+    END IF;
 
-    IF pl.subscription_id IS NOT NULL THEN
+    SELECT * INTO tgt FROM subscription_plans WHERE id = mv.to_plan_id;
+    v_note := format('Αυτόματη αλλαγή %s → %s από %s (%s παραγγελίες τον %s)',
+                     mv.from_plan_name, tgt.name, to_char(v_period, 'MM/YYYY'), mv.orders_counted,
+                     to_char(v_eval, 'MM/YYYY'));
+
+    IF mv.subscription_id IS NOT NULL THEN
       -- Status (incl. a running trial) stays as it is; only plan and price move.
+      -- A free plan (Basic) is never billed: delivr_bill_subscriptions skips price 0.
       UPDATE subscriptions
          SET plan_id = tgt.id, price = tgt.price, billing_cycle = tgt.billing_cycle,
              notes = concat_ws(E'\n', nullif(notes, ''), v_note), updated_at = now()
-       WHERE id = pl.subscription_id;
+       WHERE id = mv.subscription_id;
     ELSE
+      -- Only an upgrade can get here (a store without a subscription is Basic).
       INSERT INTO subscriptions (plan_id, party_type, party_id, status, price, billing_cycle,
                                  started_on, next_charge_on, notes)
       VALUES (tgt.id, 'store', st.id, 'active', tgt.price, tgt.billing_cycle,
               v_period, v_period, v_note);
     END IF;
 
-    v_up := v_up || jsonb_build_object('store_id', st.id, 'name', st.name, 'orders', v_orders,
-                                       'from', pl.plan_name, 'to', tgt.name, 'price', tgt.price);
+    v_item := jsonb_build_object('store_id', st.id, 'name', st.name, 'orders', mv.orders_counted,
+                                 'from', mv.from_plan_name, 'to', tgt.name, 'price', tgt.price);
+    IF mv.move_kind = 'downgrade' THEN v_down := v_down || v_item; ELSE v_up := v_up || v_item; END IF;
   END LOOP;
 
   RETURN jsonb_build_object('ok', true, 'period', v_period, 'evaluated_month', v_eval,
-                            'upgraded', v_up, 'custom', v_custom);
+                            'upgraded', v_up, 'downgraded', v_down, 'custom', v_custom);
+END $$;
+
+-- ── 8d. «Προβολή στην κορυφή» from the plan ──────────────────
+-- Promoted = the admin's manual flag OR a live (trial/active) subscription
+-- on a plan with «promoted» (Plus, Premium). Follows every plan change.
+CREATE OR REPLACE FUNCTION delivr_store_promoted(p_store_id UUID, p_admin_flag BOOLEAN DEFAULT false)
+RETURNS BOOLEAN LANGUAGE sql STABLE SET search_path = public AS $$
+  SELECT coalesce(p_admin_flag, false) OR EXISTS (
+    SELECT 1 FROM subscriptions sub JOIN subscription_plans p ON p.id = sub.plan_id
+     WHERE sub.party_type = 'store' AND sub.party_id = p_store_id
+       AND sub.status IN ('trial', 'active') AND p.promoted)
+$$;
+
+-- 014's marketplace list, unchanged except «promoted» (order + output).
+CREATE OR REPLACE FUNCTION delivr_marketplace_stores(
+  p_area   TEXT DEFAULT NULL,
+  p_postal TEXT DEFAULT NULL,
+  p_city   TEXT DEFAULT NULL
+) RETURNS JSONB LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  s stores%ROWTYPE; m RECORD; v_out JSONB := '[]'::JSONB; v_zones INT;
+  v_has_area BOOLEAN := nullif(btrim(coalesce(p_area, '')), '') IS NOT NULL
+                     OR nullif(btrim(coalesce(p_postal, '')), '') IS NOT NULL
+                     OR nullif(btrim(coalesce(p_city, '')), '') IS NOT NULL;
+  v_same_city BOOLEAN; v_zone_hit BOOLEAN; v_delivers BOOLEAN; v_pickup BOOLEAN;
+  v_zone_name TEXT;
+  v_fee NUMERIC; v_min NUMERIC; v_free NUMERIC; v_extra INT;
+BEGIN
+  FOR s IN SELECT * FROM stores st WHERE delivr_is_marketplace_store(st)
+           ORDER BY delivr_store_promoted(st.id, st.is_promoted) DESC, st.rating DESC, st.name LOOP
+    v_delivers := NULL; v_pickup := NULL; v_zone_name := NULL;
+    v_fee := s.delivery_fee; v_min := coalesce(s.min_order_amount, 0);
+    v_free := s.free_delivery_above; v_extra := 0;
+
+    IF v_has_area THEN
+      SELECT count(*) INTO v_zones FROM store_zones z WHERE z.store_id = s.id AND z.is_active;
+      SELECT * INTO m FROM delivr_match_address(s.id, p_area, p_postal, p_city, 'delivery');
+      v_same_city := coalesce(delivr_norm(s.city) = delivr_norm(p_city), false)
+                  OR coalesce(delivr_norm(s.city) = delivr_norm(p_area), false);
+      v_zone_hit := coalesce(m.match_type = 'zone', false);
+      v_delivers := s.supports_delivery AND coalesce(m.is_match, false)
+                    AND (v_zone_hit OR (v_zones = 0 AND v_same_city));
+      v_pickup   := s.supports_takeaway AND (v_zone_hit OR v_same_city);
+      IF NOT (v_delivers OR v_pickup) THEN CONTINUE; END IF;
+      IF v_zone_hit THEN SELECT z.name INTO v_zone_name FROM store_zones z WHERE z.id = m.zone_id; END IF;
+      IF v_delivers THEN
+        v_fee := m.fee; v_min := m.min_amount; v_free := m.free_above; v_extra := coalesce(m.extra_min, 0);
+      END IF;
+    END IF;
+
+    v_out := v_out || jsonb_build_object(
+      'id', s.id, 'slug', s.slug, 'name', s.name, 'description', s.description,
+      'category', s.category::TEXT, 'cuisine_tags', coalesce(to_jsonb(s.cuisine_tags), '[]'::JSONB),
+      'logo_url', s.logo_url, 'cover_url', s.cover_url,
+      'address', s.address, 'city', s.city,
+      'rating', s.rating, 'review_count', s.review_count,
+      'is_promoted', delivr_store_promoted(s.id, s.is_promoted),
+      'discount_pct', s.discount_pct, 'pickup_discount_pct', s.pickup_discount_pct,
+      'is_open_now', delivr_store_open_now(s.id),
+      'supports_delivery', s.supports_delivery, 'supports_takeaway', s.supports_takeaway,
+      'delivers', v_delivers, 'pickup', v_pickup, 'zone_name', v_zone_name,
+      'delivery_fee', v_fee, 'min_order', v_min, 'free_above', v_free,
+      -- Same ETA the store page and the QR list show: delivery time + zone extra.
+      'eta_min', coalesce(s.avg_delivery_time, 30) + v_extra,
+      'prep_min', coalesce(s.prep_time_min, 20)
+    );
+  END LOOP;
+  RETURN v_out;
+END $$;
+
+-- 005's QR store list (product line B), unchanged except «promoted».
+CREATE OR REPLACE FUNCTION delivr_stores_for_property(
+  p_code TEXT, p_service TEXT DEFAULT 'delivery'
+) RETURNS TABLE (
+  store_id UUID, store_name TEXT, slug TEXT, description TEXT, category TEXT,
+  cuisine_tags TEXT[], logo_url TEXT, cover_url TEXT, store_address TEXT, store_city TEXT,
+  store_phone TEXT, rating NUMERIC, review_count INT, is_promoted BOOLEAN,
+  discount_pct NUMERIC, pickup_discount_pct NUMERIC,
+  delivery_fee NUMERIC, min_order NUMERIC, free_above NUMERIC, eta_min INT,
+  dist_km DOUBLE PRECISION, match_type TEXT, is_open_now BOOLEAN,
+  supports_delivery BOOLEAN, supports_takeaway BOOLEAN, accepts_cash BOOLEAN
+) LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE pr properties%ROWTYPE;
+BEGIN
+  SELECT * INTO pr FROM properties
+   WHERE delivr_norm(code) = delivr_norm(p_code) AND is_active;
+  IF NOT FOUND THEN RAISE EXCEPTION 'PROPERTY_NOT_FOUND' USING ERRCODE = 'P0002'; END IF;
+
+  RETURN QUERY
+  SELECT s.id, s.name, s.slug, s.description, s.category::TEXT,
+         s.cuisine_tags, s.logo_url, s.cover_url, s.address, s.city, s.phone,
+         s.rating, s.review_count, delivr_store_promoted(s.id, s.is_promoted),
+         s.discount_pct, s.pickup_discount_pct,
+         m.fee, m.min_amount, m.free_above,
+         (coalesce(s.avg_delivery_time, 30) + coalesce(m.extra_min, 0))::INT,
+         m.dist_km, m.match_type, delivr_store_open_now(s.id),
+         s.supports_delivery, s.supports_takeaway, s.accepts_cash
+    FROM stores s
+    CROSS JOIN LATERAL delivr_match_zone(s.id, pr.id, p_service) m
+   WHERE s.is_active AND s.onboarding_status = 'active' AND m.is_match
+   ORDER BY delivr_store_open_now(s.id) DESC, delivr_store_promoted(s.id, s.is_promoted) DESC,
+            m.dist_km ASC NULLS LAST, s.rating DESC;
 END $$;
 
 -- ── 9. /join: plans with their monthly order limit ───────────
@@ -785,6 +952,13 @@ REVOKE EXECUTE ON FUNCTION delivr_plan_above(INT)                  FROM PUBLIC, 
 REVOKE EXECUTE ON FUNCTION delivr_plan_top_limit()                 FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION delivr_usage_state(INT, INT, INT)       FROM PUBLIC, anon, authenticated;
 REVOKE EXECUTE ON FUNCTION delivr_plan_json(subscription_plans)    FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION delivr_store_plan_move(UUID, DATE)      FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION delivr_store_promoted(UUID, BOOLEAN)    FROM PUBLIC, anon, authenticated;
+-- Replaced above with the same signatures; re-stated so a re-run keeps them public.
+REVOKE EXECUTE ON FUNCTION delivr_marketplace_stores(TEXT, TEXT, TEXT) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION delivr_stores_for_property(TEXT, TEXT)       FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION delivr_marketplace_stores(TEXT, TEXT, TEXT) TO anon, authenticated;
+GRANT  EXECUTE ON FUNCTION delivr_stores_for_property(TEXT, TEXT)       TO anon, authenticated;
 REVOKE EXECUTE ON FUNCTION delivr_store_plan_usage(UUID)           FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION delivr_admin_plan_usage(DATE)           FROM PUBLIC, anon;
 REVOKE EXECUTE ON FUNCTION delivr_apply_plan_upgrades(DATE)        FROM PUBLIC, anon;
