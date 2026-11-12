@@ -7,7 +7,7 @@
  *            "dark"    for ink/black surfaces: orange wordmark, muted-light «by»
  *   size     font size of the wordmark; the «by» line scales in em.
  *
- * Delivr keeps its own colour (#FF4500) and font (Syne); the favicon and the
+ * Delivr keeps its own colour (#FF4500) and font (Verdana — George 01/11/2026, the Syne display font was dropped); the favicon and the
  * OG image are untouched on purpose.
  */
 type Variant = 'full' | 'compact'
