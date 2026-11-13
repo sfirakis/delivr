@@ -14,14 +14,13 @@
 Κοινά: παραγγελία μόνο μέσω `delivr_place_order`, επιβεβαίωση καταστήματος
 από tokenized σελίδα χωρίς login (`/s/<token>`), tracking `/t/<token>`.
 Έσοδα: **μόνο συνδρομές καταστημάτων, χωρίς προμήθεια** (απόφαση George
-30/10/2026, migration 018 — branch `feat/subscription-tiers`, όχι ακόμα live).
+30/10/2026, migration 018 — ✅ live 13/11/2026).
 Το κατάλυμα (Host Partner) κρατά το 8% του.
 
 ## 🎯 Τώρα — Open marketplace (2026-10-30)
 
-- 🔄 **Μόνο συνδρομή, καμία προμήθεια (απόφαση George 30/10/2026).** Branch
-  `feat/subscription-tiers` (από `fix/hide-commission`), draft PR — **τίποτα
-  live ακόμα**. Migration `018_subscription_tiers.sql`:
+- ✅ **Μόνο συνδρομή, καμία προμήθεια (απόφαση George 30/10/2026) — LIVE
+  13/11/2026** (PR #8, 097f3a5). Migration `018_subscription_tiers.sql`:
   - ✅ Πακέτα (ίδια ids, τίποτα δεν σβήνεται): Basic 0€ / 15 παραγγελίες τον
     μήνα · Pro 39€ / 100 · **Plus 79€ / 250 (νέο)** · Premium 150€ / 500 ·
     πάνω από 500 «Κατόπιν συμφωνίας». 14 μέρες δοκιμή στα επί πληρωμή. Όλα
@@ -59,8 +58,12 @@
     e2e guest 12/12, shop 11/11, market 12/12, join 7/7, merchant-pos 10/10,
     store-confirm 8/8, admin 10/10 · build + lint πράσινα · screenshots
     `docs/screenshots/subscription-tiers/`.
-  - ⬜ **Θέλει OK George για live:** merge PR #7 → εφαρμογή 018 → merge αυτού
-    του PR → deploy `notify-order` (νέα labels κάρτας). pg_cron είναι
+  - ✅ **Live 13/11 (OK George):** έλεγχος live=repo · backup schema
+    `backup_20261113` · 018 στη βάση · merge #8 · `notify-order` v2 · Vercel
+    READY · live δοκιμή demo: /join 4 πακέτα, παραγγελία μετρητά 0 € προμήθεια,
+    κάρτα στο ταμείο, «παραδόθηκε»→πληρωμένη, κάρτα σε delivery χωρίς POS
+    απορρίπτεται. Επόμενα: Resend secrets, live δοκιμή Λόλας, όροι μαγαζιού,
+    άναμμα marketplace σε μαγαζιά (σήμερα 0 στο `/`). pg_cron είναι
     διαθέσιμο αλλά ΟΧΙ εγκατεστημένο: ή Supabase → Integrations → Cron και
     ξανατρέχει το τελευταίο block της 018, ή το admin πατά το κουμπί κάθε 1η
     του μήνα (πριν την «Έκδοση χρεώσεων»).
