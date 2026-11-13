@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { STORE_GUIDE, ADMIN_GUIDE, STORE_HANDOUT, type HelpSection } from './content'
 import { Card } from '@/admin/ui'
 import { usePlatformSettings } from '@/admin/hooks'
+import { DELIVR_CONTACT_EMAIL } from '@/lib/contact'
 
 function Section({ section, open, onToggle }: {
   section: HelpSection; open: boolean; onToggle: () => void
@@ -135,8 +136,12 @@ export default function HelpPage({ audience }: { audience: 'store' | 'admin' }) 
             <li>Δεν λαμβάνεις email; Έλεγξε τα ανεπιθύμητα και το «Email παραγγελιών» στις Ρυθμίσεις.</li>
             <li>Δεν εμφανίζεσαι στους πελάτες; Δες αν το κατάστημα είναι Ανοιχτό και αν το ωράριο καλύπτει την τρέχουσα ώρα.</li>
             <li>Ο εκτυπωτής βγάζει κομμένο δελτίο; Στις ρυθμίσεις εκτύπωσης βάλε χαρτί 80mm και μηδενικά περιθώρια.</li>
-            <li>Λάθος μεταφορικά; Οι ζώνες παράδοσης ορίζονται από τον διαχειριστή της πλατφόρμας.</li>
+            <li>Λάθος μεταφορικά; Τις ζώνες παράδοσης (περιοχή, μεταφορικά, ελάχιστη παραγγελία) τις αλλάζεις μόνος σου στις Ρυθμίσεις → «Ζώνες παράδοσης».</li>
           </ul>
+          <p className="text-sm text-ink-2 mt-3" data-testid="help-contact">
+            Ερωτήσεις; Γράψε μας στο{' '}
+            <a href={`mailto:${DELIVR_CONTACT_EMAIL}`} className="text-brand font-semibold underline">{DELIVR_CONTACT_EMAIL}</a>
+          </p>
         </div>
       )}
     </div>

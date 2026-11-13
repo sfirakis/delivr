@@ -10,6 +10,7 @@ import MerchantAnalyticsPage from './pages/AnalyticsPage'
 import MerchantSettingsPage from './pages/SettingsPage'
 import HelpPage from '@/help/HelpPage'
 import DelivrLogo from '@/components/brand/DelivrLogo'
+import PlanUsageBanner from './PlanUsageBanner'
 
 type TabId = 'pos' | 'menu' | 'analytics' | 'settings' | 'help'
 
@@ -91,6 +92,8 @@ export default function MerchantApp() {
           </p>
         </div>
       )}
+
+      {store.onboarding_status === 'active' && <PlanUsageBanner storeId={store.id} />}
 
       <div className="no-print"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
 

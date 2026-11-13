@@ -13,6 +13,7 @@ import { launchChromium } from './browser.mjs'
 
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const SHOTS = process.env.SHOTS_DIR || null   // set to docs/screenshots to refresh George's screenshots
+const SUB_SHOTS = process.env.SUB_SHOTS_DIR || null   // docs/screenshots/subscription-tiers (018)
 
 const MARINA = '4f2e6d70-2b5a-4c8e-9d31-7c9a1f0e5b22'
 const KAFE = '7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
@@ -121,6 +122,8 @@ await page.route('**/*.supabase.co/**', async route => {
     return json(route, body.p_area === 'Ελούντα' ? IN_ELOUNDA : body.p_area ? [] : ALL)
   }
   if (url.includes('/rpc/delivr_store_by_slug')) return json(route, STORE)
+  // 018: this store takes card at the counter but its courier has no terminal.
+  if (url.includes('/rpc/delivr_store_payment_options')) return json(route, { cash: true, card_pickup: true, card_delivery: false })
   if (url.includes('/rpc/delivr_public_settings')) return json(route, SETTINGS)
   if (url.includes('/rpc/delivr_place_order')) {
     placed = body
@@ -254,6 +257,21 @@ await step('Add to cart → cart → checkout stay under /stores/', async () => 
   await page.waitForTimeout(200)
 })
 await shot('market-m-06-checkout')
+
+await step('Delivery without a card terminal: «Κάρτα» is shown but not selectable, cash stays chosen', async () => {
+  const card = page.getByTestId('pay-card')
+  await card.waitFor()
+  if (!(await card.isDisabled())) throw new Error('card selectable for delivery')
+  if (!(await page.getByTestId('pay-cash').isChecked())) throw new Error('cash not selected')
+  const b = await page.locator('body').innerText()
+  for (const s of ['Μετρητά κατά την παράδοση', 'Κάρτα κατά την παράδοση', 'δεν δέχεται κάρτα στην παράδοση', 'τίποτα δεν χρεώνεται online'])
+    if (!b.includes(s)) throw new Error(`missing "${s}"`)
+  if (/Σύντομα διαθέσιμο|Coming soon/.test(b)) throw new Error('"coming soon" card is back')
+  if (SUB_SHOTS) {
+    await page.getByTestId('pay-card').scrollIntoViewIfNeeded()
+    await page.screenshot({ path: `${SUB_SHOTS}/checkout-02-delivery-card-not-accepted.png`, timeout: 8000 }).catch(() => {})
+  }
+})
 
 await step('The order goes out as a marketplace order (channel "app"), cash, no property', async () => {
   await page.getByRole('button', { name: /Αποστολή παραγγελίας/ }).click()

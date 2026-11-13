@@ -55,6 +55,10 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
         is_open: form.is_open,
         // Sales channels (migration 014). Sent only when the columns exist, so
         // this screen keeps saving on a database without 014.
+        // Card on delivery (migration 018) — same guard for an older database.
+        ...(store.accepts_card_on_delivery !== undefined
+          ? { accepts_card_on_delivery: form.accepts_card_on_delivery }
+          : {}),
         ...(store.marketplace_listed !== undefined
           ? { marketplace_listed: form.marketplace_listed, standalone_enabled: form.standalone_enabled }
           : {}),
@@ -123,7 +127,7 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
           <Field label="Email παραγγελιών" hint="Εκεί φτάνει το email με τον σύνδεσμο επιβεβαίωσης">
             <TextInput type="email" value={form.order_email ?? ''} onChange={e => set({ order_email: e.target.value })} />
           </Field>
-          <Field label="WhatsApp παραγγελιών" hint="Διεθνής μορφή, π.χ. +306900000000">
+          <Field label="WhatsApp παραγγελιών" hint="Διεθνής μορφή: +30 και ο αριθμός, χωρίς κενά">
             <TextInput value={form.order_whatsapp ?? ''} onChange={e => set({ order_whatsapp: e.target.value })} />
           </Field>
           <div className="md:col-span-2">
@@ -178,6 +182,12 @@ export default function MerchantSettingsPage({ store }: { store: AdminStore }) {
         <div className="grid md:grid-cols-2 gap-x-6 mt-1">
           <CheckRow label="Δέχεται μετρητά" checked={form.accepts_cash ?? true}
                     onChange={v => set({ accepts_cash: v })} />
+          {store.accepts_card_on_delivery !== undefined && (
+            <CheckRow label="💳 Κάρτα στην παράδοση"
+                      hint="Ο διανομέας σας έχει POS. Στο take away ο πελάτης μπορεί πάντα να πληρώσει με κάρτα στο ταμείο."
+                      checked={form.accepts_card_on_delivery ?? false}
+                      onChange={v => set({ accepts_card_on_delivery: v })} />
+          )}
           <CheckRow label="Αυτόματη αποδοχή παραγγελιών"
                     hint="Οι παραγγελίες επιβεβαιώνονται χωρίς ενέργεια από εσάς"
                     checked={form.auto_accept ?? false} onChange={v => set({ auto_accept: v })} />

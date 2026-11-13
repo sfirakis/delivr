@@ -11,6 +11,7 @@ import { launchChromium } from './browser.mjs'
 const BASE = process.env.BASE_URL || 'http://localhost:5174'
 const REF = process.env.E2E_SUPABASE_REF || 'ifgzciraogohycuvujip'
 const SHOTS = process.env.SHOTS_DIR || null
+const SUB_SHOTS = process.env.SUB_SHOTS_DIR || null   // docs/screenshots/subscription-tiers (018)
 const USER_ID = '22222222-3333-4444-5555-666666666666'
 const STORE_ID = '7a1d2c3b-4e5f-4a6b-8c7d-9e0f1a2b3c4d'
 
@@ -36,7 +37,7 @@ const order = {
   id: 'o-1', order_number: 'DLV-261030-0001', status: 'pending', channel: 'app', delivery_type: 'delivery',
   guest_name: 'Μαρία', guest_phone: '6900000001', customer_notes: null,
   delivery_address: { label: 'Σπίτι', street: 'Οδός 5', area: 'Κέντρο', city: 'Άγιος Νικόλαος' },
-  subtotal: 12, delivery_fee: 2, discount_amount: 0, total: 14, payment_method: 'cash',
+  subtotal: 12, delivery_fee: 2, discount_amount: 0, total: 14, payment_method: 'card',   // 018: card on delivery
   prep_minutes: null, scheduled_for: null, estimated_ready_at: null,
   store_token: 'tok-1',        // only the ticket view (print) still reads by token
   public_token: 'pub', printed_at: null, created_at: new Date().toISOString(),
@@ -55,6 +56,15 @@ const errors = []
 const calls = []          // every RPC the POS made
 const writes = []         // any non-GET on a table (must stay empty for orders)
 let forceStale = false    // simulate another device having moved the order already
+
+// 018: the store's monthly meter (Basic, 15 orders). Mutable per step.
+const usage = (orders) => ({
+  month: '2026-10-01', next_month: '2026-11-01', orders, limit: 15,
+  pct: Math.round(100 * orders / 15), state: orders > 15 ? 'over' : orders >= 12 ? 'near' : 'ok', top_limit: 500,
+  plan: { id: 'p-basic', name: 'Basic', price: 0 },
+  next_plan: orders >= 12 ? { id: 'p-pro', name: 'Pro', price: 39, billing_cycle: 'month', included_orders: 100 } : null,
+})
+let usageNow = usage(12)
 
 const browser = await launchChromium()
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, locale: 'el-GR' })
@@ -97,6 +107,7 @@ await page.route('**/*.supabase.co/**', async route => {
     if (a === 'accept') order.prep_minutes = body.p_prep_minutes
     return json(route, { ok: true, status: order.status, prep_minutes: order.prep_minutes })
   }
+  if (url.includes('/rpc/delivr_store_plan_usage')) return json(route, usageNow)
   if (url.includes('/rpc/delivr_store_order')) {
     return json(route, {
       order_id: order.id, order_number: order.order_number, status: order.status, service: 'delivery', channel: 'app',
@@ -182,6 +193,31 @@ await step('A stale step shows a clear message and refreshes', async () => {
   forceStale = true
   await page.getByRole('button', { name: /Έναρξη ετοιμασίας/ }).click()
   await page.getByText('Η παραγγελία έχει ήδη αλλάξει κατάσταση').waitFor()
+})
+
+await step('Monthly meter: «12 / 15 παραγγελίες αυτόν τον μήνα» + near-limit banner', async () => {
+  await page.getByTestId('plan-usage').waitFor()
+  const t = await page.getByTestId('plan-usage').innerText()
+  if (!t.includes('12 / 15') || !t.includes('παραγγελίες αυτόν τον μήνα')) throw new Error(t)
+  if (!t.includes('Πλησιάζεις το όριο') || !t.includes('Pro')) throw new Error(`near banner: ${t}`)
+  if (SUB_SHOTS) await page.screenshot({ path: `${SUB_SHOTS}/merchant-01-usage-near-limit.png`, timeout: 8000 }).catch(() => {})
+})
+
+await step('Over the limit: banner says orders continue and the move to Pro from 1/11', async () => {
+  usageNow = usage(17)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByText('Ξεπέρασες το όριο').waitFor()
+  const t = await page.getByTestId('plan-usage').innerText()
+  for (const s of ['17 / 15', 'Δεν χάνεις καμία παραγγελία', 'Από 1/11', 'Pro', '39,00'])
+    if (!t.includes(s)) throw new Error(`missing "${s}" in: ${t}`)
+  // The POS keeps working: the order is still there with its buttons.
+  await page.getByText('DLV-261030-0001').waitFor()
+  if (SUB_SHOTS) await page.screenshot({ path: `${SUB_SHOTS}/merchant-02-usage-over-limit.png`, timeout: 8000 }).catch(() => {})
+})
+
+await step('POS shows how the customer pays: «Κάρτα κατά την παράδοση»', async () => {
+  const p = await page.getByTestId('pos-payment').first().innerText()
+  if (!p.includes('💳') || !p.includes('Κάρτα κατά την παράδοση')) throw new Error(p)
 })
 
 await step('No direct writes on orders and no token RPC from the POS', async () => {

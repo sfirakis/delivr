@@ -7,6 +7,7 @@ import { getPublicPlans, registerStore, ApiError, type StoreSignup, type PublicP
 import { money, num } from '@/lib/format'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useAuthStore } from '@/store/authStore'
+import { DELIVR_CONTACT_EMAIL } from '@/lib/contact'
 import { Spinner } from '@/components/ui'
 import DelivrLogo from '@/components/brand/DelivrLogo'
 import { CATEGORY_EMOJI } from './MarketStoreCard'
@@ -19,6 +20,10 @@ import { CATEGORY_EMOJI } from './MarketStoreCard'
  * it (Διαχείριση → Καταστήματα) and only then does it show in the marketplace
  * and accept orders. Nothing is charged here: the chosen plan is stored as a
  * request and turned into a subscription by the admin.
+ *
+ * Pricing (George 30/10/2026, migration 018): subscription only, each plan
+ * covers a number of orders per month; above the top plan the price is
+ * agreed. Customers pay the shop directly — cash or card, in person.
  *
  * If Supabase asks the new account to confirm its email first, the form is
  * kept on this device and finished automatically after the first sign-in.
@@ -63,9 +68,34 @@ const ERRORS: Record<string, string> = {
   AUTH_REQUIRED: 'Χρειάζεται σύνδεση.',
 }
 
+// Prices are shown before VAT («+ ΦΠΑ»): HQ default per the marketing review
+// of 12/11/2026. TODO(BILLING_MAP decision 4, pending George): if he decides
+// the prices include VAT, drop VAT_NOTE (and the «+ ΦΠΑ» checks in e2e/join-flow).
+const VAT_NOTE = ' + ΦΠΑ'
+
 function planPrice(p: PublicPlan) {
   if (num(p.price) === 0) return 'Δωρεάν'
-  return `${money(p.price)}/${p.billing_cycle === 'year' ? 'έτος' : 'μήνα'}`
+  return `${money(p.price)}/${p.billing_cycle === 'year' ? 'έτος' : 'μήνα'}${VAT_NOTE}`
+}
+
+const wholeEuros = (v: number) => `${new Intl.NumberFormat('el-GR', { maximumFractionDigits: 0 }).format(v)} €`
+
+/**
+ * «Παράδειγμα: 100 παραγγελίες των 15 € = 1.500 €…» (marketing review 12/11/2026):
+ * built from the plan the server returns (the one covering 100 orders), so it
+ * never shows a price the plans no longer have. The 25–30 % is the market's
+ * commission with courier (efood/Wolt), not ours.
+ */
+function savingsExample(plans: PublicPlan[]) {
+  const orders = 100, basket = 15
+  const plan = plans
+    .filter(p => num(p.price) > 0 && p.included_orders != null && p.included_orders >= orders)
+    .sort((a, b) => (a.included_orders ?? 0) - (b.included_orders ?? 0))[0]
+  if (!plan) return null
+  const turnover = orders * basket
+  return `Παράδειγμα: ${orders} παραγγελίες των ${basket} € = ${wholeEuros(turnover)}. ` +
+    `Με προμήθεια 25–30% θα πλήρωνες ${wholeEuros(turnover * 0.25).replace(' €', '')}–${wholeEuros(turnover * 0.30)}. ` +
+    `Με το ${plan.name}: ${wholeEuros(num(plan.price))}.`
 }
 
 export default function JoinPage() {
@@ -90,6 +120,9 @@ export default function JoinPage() {
   useEffect(() => { if (!done) saveDraft({ shop, planId }) }, [shop, planId, done])
 
   const plans = useMemo(() => plansQ.data?.plans ?? [], [plansQ.data])
+  const customAbove = plansQ.data?.custom_above
+    ?? plans.reduce<number | null>((m, p) => (p.included_orders != null && p.included_orders > (m ?? 0) ? p.included_orders : m), null)
+  const example = useMemo(() => savingsExample(plans), [plans])
   useEffect(() => {
     if (!planId && plans.length > 0) setPlanId(plans[0].id)
   }, [plans, planId])
@@ -183,7 +216,8 @@ export default function JoinPage() {
           <li>🗺️ Εμφανίζεσαι στους πελάτες των περιοχών που εξυπηρετείς</li>
           <li>🔗 Δικός σου σύνδεσμος + QR για Instagram, βιτρίνα, flyer</li>
           <li>🔔 Οθόνη παραγγελιών με ήχο, εκτύπωση 80mm, στατιστικά</li>
-          <li>💶 Μετρητά στην παράδοση· online πληρωμή έρχεται σύντομα</li>
+          <li>💶 Ο πελάτης πληρώνει εσένα απευθείας: μετρητά ή κάρτα, στην παράδοση ή στο ταμείο</li>
+          <li>📦 Χωρίς προμήθεια: κρατάς όλη την αξία κάθε παραγγελίας. Πληρώνεις μόνο μηνιαία συνδρομή.</li>
         </ul>
       </div>
 
@@ -209,6 +243,11 @@ export default function JoinPage() {
                   <p className="font-semibold">{p.name}</p>
                   <p className="font-display font-black text-brand whitespace-nowrap">{planPrice(p)}</p>
                 </div>
+                {p.included_orders != null && (
+                  <p className="text-sm font-semibold text-ink-1 mt-0.5" data-testid="plan-limit">
+                    Έως {p.included_orders} παραγγελίες τον μήνα
+                  </p>
+                )}
                 <p className="text-xs text-ink-2 mt-1">
                   {[p.trial_days > 0 ? `${p.trial_days} μέρες δωρεάν δοκιμή` : null,
                     p.description].filter(Boolean).join(' · ')}
@@ -216,7 +255,27 @@ export default function JoinPage() {
               </button>
             ))}
           </div>
-          <p className="text-[11px] text-ink-3 mt-2">Δεν χρεώνεται τίποτα τώρα. Το πακέτο ενεργοποιείται μαζί με το κατάστημα.</p>
+          {customAbove != null && (
+            <div className="mt-2 rounded-2xl border-2 border-dashed border-surface-4 bg-surface-1 px-4 py-3
+                            flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <p className="text-sm font-semibold whitespace-nowrap">Πάνω από {customAbove} παραγγελίες;</p>
+              <p className="font-display font-black text-brand whitespace-nowrap">Κατόπιν συμφωνίας</p>
+            </div>
+          )}
+          {example && (
+            <p className="mt-2 text-sm text-ink-1 bg-brand-50 border border-brand-100 rounded-2xl px-4 py-3"
+               data-testid="savings-example">
+              {example}
+            </p>
+          )}
+          <p className="text-[11px] text-ink-3 mt-2">
+            Δεν χρεώνεται τίποτα τώρα. Το πακέτο ενεργοποιείται μαζί με το κατάστημα.
+            Αν ξεπεράσεις το όριο, οι παραγγελίες δεν σταματούν: περνάς στο επόμενο πακέτο από τον επόμενο μήνα,
+            και αν πέσουν, γυρνάς σε μικρότερο.
+          </p>
+          <p className="text-sm text-ink-2 mt-3" data-testid="join-contact">
+            Ερωτήσεις; <a href={`mailto:${DELIVR_CONTACT_EMAIL}`} className="text-brand font-semibold underline">{DELIVR_CONTACT_EMAIL}</a>
+          </p>
         </section>
 
         {/* ── Shop ── */}
