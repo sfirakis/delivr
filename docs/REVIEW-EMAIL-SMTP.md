@@ -88,3 +88,54 @@ Smaller points (do them if cheap, they do not block):
 READY once issues 1 and 2 are fixed (3 is strongly recommended in the same round). Then re-run
 `deno check` and the fake-SMTP test with a `guest_email` that contains a comma: it must produce
 0 or 1 RCPT.
+
+---
+
+## Re-review (commit 1ef0e28, 18/11/2026)
+
+Scope: `git diff 107dbdd..1ef0e28` (`_shared/mailer.ts`, `_shared/guards.ts`, `_shared/mail.test.ts`,
+both functions, README, docs). Local checks only.
+
+### Verdict: FIX NEEDED (one small item; issues 1 and 2 are fixed)
+
+| Check | Result |
+|---|---|
+| `deno test ... supabase/functions/_shared/` | 10 passed, 0 failed (fake SMTP on 127.0.0.1 only). |
+| `deno check` on notify-order, send-notification, `_shared/*.ts` | Passes, exit 0. |
+| Issue 1: one address per recipient | **Fixed.** `isSingleEmail` rejects lists, `;`, spaces, display names, quotes and CR/LF. `to` goes to nodemailer as an array of validated addresses, so nothing is re-parsed. A comma `guest_email` gives 0 RCPT (tested). A bad Reply-To is dropped. The subject goes through `oneLine`. |
+| Issue 2: send-notification | **Fixed.** It returns 401 unless the request has `Bearer <SUPABASE_SERVICE_ROLE_KEY>` (constant-time compare). It fails closed when the key is not set. All template values are escaped, the title is one line, and the status lookup uses `Object.hasOwn`. |
+| Admin resend (`delivr_is_admin`) | **No bypass found.** The RPC runs with the caller's own JWT and the anon key. `delivr_is_admin()` checks `auth.uid()` against `profiles.role = 'admin'`, so the anon key or a guest token gives `null`, which means false. An RPC error gives `undefined`, which also means false. EXECUTE is revoked from `anon` (migration 008). Resend only re-sends the store email to the fixed store/support/owner addresses, never the guest copy. Not checked: whether a normal user can set their own `profiles.role`. The base schema with the profiles UPDATE policies is not in this repo. That is a wider question, not part of this change. |
+| Issue 3: replay | **Fixed for calls in sequence only.** See below. |
+
+### What is still wrong
+
+1. **Check-then-send race in notify-order (medium, blocks READY).** The function reads the
+   `sent` rows first. It writes the log rows only at the end, after the SMTP sends, which take
+   1-2s or more. N parallel calls with the same `order_id` + `public_token` all see "nothing
+   sent", and they send N store emails and N guest copies. The guest copy still goes to the
+   one address the guest typed, which can be any third party's address. So one order plus a
+   burst of parallel requests is still a way to send many emails from `delivr@actionweb.gr`.
+   **Change (small):** claim the send atomically before sending. Example: add
+   `store_email_sent_at` / `guest_email_sent_at` to `orders`, run
+   `UPDATE orders SET guest_email_sent_at = now() WHERE id = $1 AND guest_email_sent_at IS NULL RETURNING id`
+   (via an RPC or the service client), and send only when a row comes back. Clear the column
+   again if the send fails, so a retry is possible. The admin resend can skip the claim for the
+   store email only. Another option: a partial unique index on `order_dispatch_log` with a
+   `queued` claim row inserted before the send.
+
+### Minor (do not block)
+
+- The pg_net trigger (migration 002) authenticates with `current_setting('app.service_role_key')`.
+  If that setting is not exactly the same as the function's `SUPABASE_SERVICE_ROLE_KEY` (for
+  example after a key rotation or the move to the new `sb_secret_` keys), the status
+  notifications from the trigger now get 401. After deploy, check that one status change still
+  writes a notification.
+- A replay with an invalid `guest_email` still writes a `failed` row on every call. No mail goes
+  out, but the log grows. The atomic claim above fixes this too.
+- The test file is under `supabase/functions/_shared/`, which is not deployed as a function, so
+  this is fine.
+
+### Re-review condition
+
+READY once the atomic claim is in place. Then re-run `deno test` and `deno check`, plus a test
+that fires 5 parallel calls on the same order and expects 1 store email and 1 guest copy.
