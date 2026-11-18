@@ -134,9 +134,11 @@ protan), και κάθε γράφημα συνοδεύεται από ορατέ
 
 ## Ειδοποιήσεις
 
-- **Email στο κατάστημα** (Resend) με πλήρη παραγγελία και **κουμπί επιβεβαίωσης** που
-  ανοίγει το `/s/TOKEN`. Αν λείπει το `RESEND_API_KEY`, η παραγγελία περνάει κανονικά και
-  απλώς καταγράφεται ως `skipped` — ο σύνδεσμος υπάρχει πάντα στο admin.
+- **Email στο κατάστημα** (SMTP από το `delivr@actionweb.gr`, Resend μόνο ως εφεδρικό) με
+  πλήρη παραγγελία και **κουμπί επιβεβαίωσης** που ανοίγει το `/s/TOKEN`. Αν δεν έχουν μπει
+  τα `SMTP_*`, η παραγγελία περνάει κανονικά και απλώς καταγράφεται ως `skipped`· ο
+  σύνδεσμος υπάρχει πάντα στο admin. Κάθε email φεύγει μία φορά ανά παραγγελία. Ρυθμίσεις
+  και δοκιμή: [`docs/EMAIL-SMTP.md`](docs/EMAIL-SMTP.md).
 - **WhatsApp** μέσω έτοιμου `wa.me` συνδέσμου με τη σύνοψη της παραγγελίας. Δουλεύει σήμερα,
   χωρίς εγκρίσεις και χωρίς κόστος. Το επίσημο WhatsApp Cloud API μπαίνει pluggable αργότερα.
 - **Email επιβεβαίωσης στον πελάτη** όταν δώσει email.
@@ -174,9 +176,10 @@ supabase/seed/demo_crete.sql                         # προαιρετικά: d
 
 ```bash
 supabase functions deploy notify-order
-# Dashboard → Edge Functions → Secrets:
-#   RESEND_API_KEY=re_...
-#   RESEND_FROM=Delivr <orders@yourdomain.com>
+supabase functions deploy send-notification
+# Dashboard → Edge Functions → Secrets (ονόματα, οι τιμές από το mailbox):
+#   SMTP_HOST, SMTP_PORT=465, SMTP_USER, SMTP_PASS, SMTP_FROM
+# Λεπτομέρειες: docs/EMAIL-SMTP.md
 ```
 
 ### Πρώτος διαχειριστής

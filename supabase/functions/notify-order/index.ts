@@ -11,11 +11,16 @@
 // show what actually left the building. A missing mail transport (no SMTP_*
 // and no RESEND_API_KEY) is not an error: the order still stands and the store
 // link is returned for manual use.
+//
+// Idempotent: an email already logged as `sent` for this order is not sent
+// again (anyone holding the tracking link could otherwise replay the call).
+// A platform admin (logged-in JWT, delivr_is_admin()) can force the store
+// email again from the admin "resend" button; the guest copy is never resent.
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-// @deno-types="npm:@types/nodemailer@6.4.17"
-import nodemailer from 'npm:nodemailer@6.9.16'
+import { sendMail, mailProvider, noTransportReason } from '../_shared/mailer.ts'
+import { sentEmails, type DispatchRow } from '../_shared/guards.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -30,68 +35,6 @@ const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const eur = (n: unknown) => `${Number(n ?? 0).toFixed(2)} €`
-
-// ── Mail transport ───────────────────────────────────────────
-// SMTP first: every product sends from its own @actionweb.gr mailbox
-// (HQ decision 17/11/2026). Resend is only a fallback, used when SMTP is not
-// configured and RESEND_API_KEY is set. Secrets live in Supabase → Edge
-// Functions → Secrets, never in code. See docs/EMAIL-SMTP.md.
-//
-// Note: Supabase Edge blocks outbound ports 25 and 587, so use 465 (TLS).
-type MailProvider = 'smtp' | 'resend' | 'none'
-interface Mail { to: string[]; subject: string; html: string; replyTo?: string }
-interface MailResult { ok: boolean; provider: MailProvider; error?: string }
-
-const env = (k: string) => (Deno.env.get(k) ?? '').trim()
-const NO_TRANSPORT = 'no mail transport: set SMTP_HOST/SMTP_USER/SMTP_PASS (or RESEND_API_KEY)'
-
-function mailProvider(): MailProvider {
-  if (env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS')) return 'smtp'
-  if (env('RESEND_API_KEY')) return 'resend'
-  return 'none'
-}
-
-async function sendMail(m: Mail): Promise<MailResult> {
-  const provider = mailProvider()
-  const to = m.to.filter(Boolean)
-  if (provider === 'none') return { ok: false, provider, error: NO_TRANSPORT }
-  if (to.length === 0) return { ok: false, provider, error: 'no recipient' }
-
-  try {
-    if (provider === 'smtp') {
-      const port = Number(env('SMTP_PORT') || 465)
-      const secure = env('SMTP_SECURE') ? env('SMTP_SECURE') === 'true' : port === 465
-      const transport = nodemailer.createTransport({
-        host: env('SMTP_HOST'), port, secure,
-        auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') },
-        connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
-      })
-      try {
-        await transport.sendMail({
-          from: env('SMTP_FROM') || `Delivr <${env('SMTP_USER')}>`,
-          to: to.join(', '), subject: m.subject, html: m.html,
-          replyTo: m.replyTo || undefined,
-        })
-      } finally {
-        transport.close()
-      }
-      return { ok: true, provider }
-    }
-
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: env('RESEND_FROM') || env('SMTP_FROM') || 'Delivr <onboarding@resend.dev>',
-        to, subject: m.subject, html: m.html, reply_to: m.replyTo || undefined,
-      }),
-    })
-    if (res.ok) return { ok: true, provider }
-    return { ok: false, provider, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 400)}` }
-  } catch (err) {
-    return { ok: false, provider, error: String((err as Error)?.message ?? err).slice(0, 500) }
-  }
-}
 
 interface OrderItem {
   name: string; quantity: number; price: number
@@ -252,6 +195,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { order_id, public_token, lang: rawLang } = await req.json()
+    if (typeof order_id !== 'string' || typeof public_token !== 'string') {
+      return json({ ok: false, error: 'MISSING_PARAMS' }, 400)
+    }
     const lang: 'el' | 'en' = rawLang === 'en' ? 'en' : 'el'
 
     if (!order_id || !public_token) return json({ ok: false, error: 'MISSING_PARAMS' }, 400)
@@ -286,6 +232,25 @@ Deno.serve(async (req: Request) => {
     const orderView = { ...order, platform_name: settings?.platform_name ?? 'Delivr' }
     const orderItems = (items ?? []) as OrderItem[]
 
+    // ── Idempotency: what already went out for this order ───
+    const { data: prevRows } = await supabase
+      .from('order_dispatch_log').select('channel, target, status')
+      .eq('order_id', order_id).eq('channel', 'email').eq('status', 'sent')
+    const already = sentEmails((prevRows ?? []) as DispatchRow[], order.guest_email)
+
+    // Admin resend: only a logged-in platform admin may resend the store email.
+    let adminResend = false
+    const authHeader = req.headers.get('authorization') ?? ''
+    if (already.store && authHeader) {
+      const asCaller = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } },
+      )
+      const { data: isAdmin } = await asCaller.rpc('delivr_is_admin')
+      adminResend = isAdmin === true
+    }
+
     const results: Record<string, unknown> = {}
     const logs: Record<string, unknown>[] = []
 
@@ -298,7 +263,9 @@ Deno.serve(async (req: Request) => {
       // Result value kept as before so existing callers/tests keep working.
       results.email = 'skipped_no_key'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
-                  provider: 'none', error: NO_TRANSPORT })
+                  provider: 'none', error: noTransportReason() })
+    } else if (already.store && !adminResend) {
+      results.email = 'already_sent'
     } else if (!wantsEmail || !storeEmail) {
       results.email = 'skipped_disabled'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
@@ -316,11 +283,14 @@ Deno.serve(async (req: Request) => {
       results.email = r.ok ? 'sent' : 'failed'
       logs.push({ order_id, channel: 'email', target: to.join(', '),
                   status: r.ok ? 'sent' : 'failed', provider: r.provider,
-                  error: r.ok ? null : r.error ?? null })
+                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
+                              : r.error ?? null })
     }
 
     // ── Guest confirmation copy ──────────────────────────────
-    if (provider !== 'none' && order.guest_email) {
+    if (provider !== 'none' && order.guest_email && already.guest) {
+      results.guest_email = 'already_sent'
+    } else if (provider !== 'none' && order.guest_email) {
       const guestHtml = `<!doctype html><html><body style="font-family:Verdana,Arial,sans-serif;padding:20px;">
         <h2 style="color:#1a1814;">${lang === 'el' ? 'Η παραγγελία σου καταχωρήθηκε' : 'Your order was placed'}</h2>
         <p>${lang === 'el' ? 'Αριθμός' : 'Number'}: <strong>${esc(order.order_number)}</strong> — ${esc(store.name)}</p>
@@ -339,7 +309,8 @@ Deno.serve(async (req: Request) => {
       results.guest_email = r.ok ? 'sent' : 'failed'
       logs.push({ order_id, channel: 'email', target: order.guest_email,
                   status: r.ok ? 'sent' : 'failed', provider: r.provider,
-                  error: r.ok ? null : r.error ?? null })
+                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
+                              : r.error ?? null })
     }
 
     // ── WhatsApp hand-off link ───────────────────────────────
