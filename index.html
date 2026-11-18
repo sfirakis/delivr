@@ -13,12 +13,23 @@
 
     <title>Delivr — Delivery &amp; take away από τα μαγαζιά της περιοχής σου</title>
     <meta name="description" content="Φαγητό, καφές και ψώνια από τοπικά καταστήματα, με delivery ή take away. Πληρώνεις στο κατάστημα ή στην παράδοση. Για καταλύματα: ένα QR σε κάθε δωμάτιο." />
-    <link rel="canonical" href="https://delivr-ten.vercel.app/" />
+    <!-- Canonical per public page. The SPA serves this same file on every URL, so a
+         static canonical would point /join, /qr, /terms to the home page. It is set
+         here from the path instead, and only for public pages. -->
+    <script>
+      (function () {
+        var p = location.pathname.replace(/\/+$/, '') || '/';
+        if (!/^\/(join|qr|terms|stores\/[^/]+)?$/.test(p)) return;
+        var l = document.createElement('link');
+        l.rel = 'canonical';
+        l.href = 'https://delivr-ten.vercel.app' + (p === '/' ? '/' : p);
+        document.head.appendChild(l);
+      })();
+    </script>
     <!--%GOOGLE_SITE_VERIFICATION%-->
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Delivr" />
-    <meta property="og:url" content="https://delivr-ten.vercel.app/" />
     <meta property="og:title" content="Delivr — Delivery &amp; take away από τα μαγαζιά της περιοχής σου" />
     <meta property="og:description" content="Φαγητό, καφές και ψώνια από τοπικά καταστήματα, με delivery ή take away. Για καταλύματα: ένα QR σε κάθε δωμάτιο." />
     <meta property="og:image" content="https://delivr-ten.vercel.app/favicon.svg" />

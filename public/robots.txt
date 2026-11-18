@@ -1,15 +1,15 @@
 # Delivr: public pages (marketplace, store menus, QR landing, sign-up) are indexable.
-# Back-office apps and private order links are not.
+# Back-office apps and private order links (/t/, /s/, /orders) are not.
 User-agent: *
 Allow: /
 Allow: /qr
-Allow: /t
-Allow: /s
 Disallow: /admin
 Disallow: /merchant
 Disallow: /driver
 Disallow: /auth
 Disallow: /orders
+Disallow: /t/
+Disallow: /s/
 
 # AI search and assistant crawlers are welcome on the same public pages.
 User-agent: GPTBot
@@ -23,5 +23,7 @@ Disallow: /merchant
 Disallow: /driver
 Disallow: /auth
 Disallow: /orders
+Disallow: /t/
+Disallow: /s/
 
 Sitemap: https://delivr-ten.vercel.app/sitemap.xml
