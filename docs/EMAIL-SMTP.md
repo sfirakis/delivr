@@ -22,8 +22,10 @@ already holds.
 | `SMTP_SECURE` | optional; when empty it is `true` for port 465 |
 
 Use port **465 (TLS)**. Supabase Edge blocks outbound ports 25 and 587.
-Secrets apply to new function invocations, so after setting them redeploy
-`notify-order` and `send-notification` with this code.
+**Order of steps:** 1) apply migration `supabase/migrations/019_order_email_claims.sql`
+(adds two nullable columns to `orders`); 2) set the secrets; 3) redeploy `notify-order` and
+`send-notification` with this code. Without migration 019, `notify-order` sends nothing (it
+fails closed and logs `failed` with the reason in `order_dispatch_log`).
 
 `RESEND_API_KEY` / `RESEND_FROM` can stay empty. If both SMTP and Resend are set, SMTP wins.
 
@@ -42,7 +44,10 @@ The mailer lives in one place: `supabase/functions/_shared/mailer.ts` (checks in
   in the log row.
 - **No replays.** `notify-order` checks `order_dispatch_log`: if the store email or the guest
   copy is already `sent` for that order, it is not sent again (`results.email =
-  "already_sent"`). A logged-in platform admin (`delivr_is_admin()`) can still resend the store
+  "already_sent"`). Parallel calls are covered too: before sending, each channel is claimed
+  atomically on the order (`UPDATE orders SET store_email_claimed_at = now() WHERE id = … AND
+  store_email_claimed_at IS NULL RETURNING id`, same for `guest_email_claimed_at`). Only the
+  call that wins the claim sends; a failed send clears the claim so a retry can work. A logged-in platform admin (`delivr_is_admin()`) can still resend the store
   email from the admin button; the guest copy is never resent.
 - **`send-notification` is internal.** It answers 401 unless the request has
   `Authorization: Bearer <service role key>`, which all its callers already send
@@ -60,7 +65,8 @@ The mailer lives in one place: `supabase/functions/_shared/mailer.ts` (checks in
    ```
    The tests run a fake SMTP server on `127.0.0.1`, and network access is limited to
    `127.0.0.1`. They cover provider choice, headers, a closed port, address lists being refused,
-   the service-role check, escaping, and the "already sent" check.
+   the service-role check, escaping, the "already sent" check, and 5 parallel calls sending
+   exactly 1 store email and 1 guest copy (mock DB).
 2. **Live (after the secrets are set and the functions redeployed):** place one test
    order on a test store whose `order_email` is an internal mailbox, then check:
    - the email arrived and was not marked as spam (in Gmail, "Show original" should show

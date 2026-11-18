@@ -14,6 +14,9 @@
 //
 // Idempotent: an email already logged as `sent` for this order is not sent
 // again (anyone holding the tracking link could otherwise replay the call).
+// Parallel calls are safe too: each channel is claimed atomically on the order
+// row (orders.store_email_claimed_at / guest_email_claimed_at, migration 019)
+// before sending, and the claim is cleared again if the send fails.
 // A platform admin (logged-in JWT, delivr_is_admin()) can force the store
 // email again from the admin "resend" button; the guest copy is never resent.
 // ============================================================
@@ -21,6 +24,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
 import { sendMail, mailProvider, noTransportReason } from '../_shared/mailer.ts'
 import { sentEmails, type DispatchRow } from '../_shared/guards.ts'
+import { sendClaimed, supabaseClaims, type ClaimedOutcome } from '../_shared/order-mail.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -241,7 +245,7 @@ Deno.serve(async (req: Request) => {
     // Admin resend: only a logged-in platform admin may resend the store email.
     let adminResend = false
     const authHeader = req.headers.get('authorization') ?? ''
-    if (already.store && authHeader) {
+    if (authHeader) {
       const asCaller = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -253,6 +257,23 @@ Deno.serve(async (req: Request) => {
 
     const results: Record<string, unknown> = {}
     const logs: Record<string, unknown>[] = []
+    const claims = supabaseClaims(supabase)
+
+    /** Turn a claimed send into a result value + a dispatch log row. */
+    const record = (key: 'email' | 'guest_email', target: string, o: ClaimedOutcome) => {
+      if (o.outcome === 'already_sent') { results[key] = 'already_sent'; return }
+      if (o.outcome === 'claim_failed') {
+        results[key] = 'failed'
+        logs.push({ order_id, channel: 'email', target, status: 'failed', provider, error: o.error })
+        return
+      }
+      const r = o.result
+      results[key] = o.outcome
+      logs.push({ order_id, channel: 'email', target,
+                  status: o.outcome, provider: r.provider,
+                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
+                              : r.error ?? null })
+    }
 
     // ── Email ────────────────────────────────────────────────
     const provider = mailProvider()
@@ -279,12 +300,9 @@ Deno.serve(async (req: Request) => {
       const subject = T[lang].subject(order.order_number,
         order.delivery_type === 'delivery' ? T[lang].delivery : T[lang].takeaway)
 
-      const r = await sendMail({ to, subject, html, replyTo: settings?.support_email ?? undefined })
-      results.email = r.ok ? 'sent' : 'failed'
-      logs.push({ order_id, channel: 'email', target: to.join(', '),
-                  status: r.ok ? 'sent' : 'failed', provider: r.provider,
-                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
-                              : r.error ?? null })
+      // Admin resend forces the claim; everyone else must win it.
+      record('email', to.join(', '), await sendClaimed(claims, order_id, 'store_email_claimed_at',
+        { to, subject, html, replyTo: settings?.support_email ?? undefined }, sendMail, adminResend))
     }
 
     // ── Guest confirmation copy ──────────────────────────────
@@ -300,17 +318,13 @@ Deno.serve(async (req: Request) => {
            ${lang === 'el' ? 'Παρακολούθηση παραγγελίας' : 'Track your order'}</a></p>
       </body></html>`
 
-      const r = await sendMail({
+      // The guest copy is never forced: at most one per order.
+      record('guest_email', order.guest_email, await sendClaimed(claims, order_id, 'guest_email_claimed_at', {
         to: [order.guest_email],
         subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
         html: guestHtml,
         replyTo: settings?.support_email ?? undefined,
-      })
-      results.guest_email = r.ok ? 'sent' : 'failed'
-      logs.push({ order_id, channel: 'email', target: order.guest_email,
-                  status: r.ok ? 'sent' : 'failed', provider: r.provider,
-                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
-                              : r.error ?? null })
+      }, sendMail))
     }
 
     // ── WhatsApp hand-off link ───────────────────────────────

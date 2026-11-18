@@ -6,6 +6,8 @@
 
 import { esc, isSingleEmail, mailProvider, oneLine, sendMail } from './mailer.ts'
 import { isServiceRoleRequest, sentEmails } from './guards.ts'
+import { sendClaimed, supabaseClaims, type ClaimColumn, type ClaimStore } from './order-mail.ts'
+import type { Mail, MailResult } from './mailer.ts'
 
 const assert = (cond: unknown, msg: string) => { if (!cond) throw new Error(msg) }
 
@@ -168,4 +170,111 @@ Deno.test('fix 3: sent rows block a second send per channel', () => {
   ]
   const n = sentEmails(notSent, guest)
   assert(!n.store && !n.guest, 'failed/skipped/whatsapp rows do not count')
+})
+
+// ── 4) Parallel calls: atomic claim per channel ──────────────
+/** In-memory "orders" table. Each claim yields first (like a DB round-trip),
+ *  then does the UPDATE ... WHERE col IS NULL check-and-set in one step,
+ *  which is what Postgres guarantees for a single UPDATE. */
+function mockClaims() {
+  const rows = new Map<string, Partial<Record<ClaimColumn, string | null>>>()
+  const store: ClaimStore = {
+    async claim(id, col, force = false) {
+      await new Promise(r => setTimeout(r, Math.random() * 5))
+      const row = rows.get(id) ?? {}
+      if (!force && row[col] != null) return false
+      rows.set(id, { ...row, [col]: new Date().toISOString() })
+      return true
+    },
+    async release(id, col) {
+      await new Promise(r => setTimeout(r, 1))
+      rows.set(id, { ...(rows.get(id) ?? {}), [col]: null })
+    },
+  }
+  return { store, rows }
+}
+
+function countingSender(ok = true) {
+  const sent: Mail[] = []
+  const send = async (m: Mail): Promise<MailResult> => {
+    await new Promise(r => setTimeout(r, 10)) // slow SMTP: calls overlap
+    if (ok) sent.push(m)
+    return ok ? { ok: true, provider: 'smtp' } : { ok: false, provider: 'smtp', error: 'boom' }
+  }
+  return { sent, send }
+}
+
+/** What one notify-order call does: store email, then guest copy. */
+async function oneCall(claims: ClaimStore, send: (m: Mail) => Promise<MailResult>, admin = false) {
+  const store = await sendClaimed(claims, 'order-1', 'store_email_claimed_at',
+    { to: ['store@test.invalid'], subject: 'store', html: 'h' }, send, admin)
+  const guest = await sendClaimed(claims, 'order-1', 'guest_email_claimed_at',
+    { to: ['guest@test.invalid'], subject: 'guest', html: 'h' }, send)
+  return [store.outcome, guest.outcome]
+}
+
+Deno.test('fix 4: 5 parallel calls send exactly 1 store + 1 guest email', async () => {
+  const { store } = mockClaims()
+  const { sent, send } = countingSender()
+  const outcomes = await Promise.all(Array.from({ length: 5 }, () => oneCall(store, send)))
+  assert(sent.filter(m => m.subject === 'store').length === 1, 'store sent ' + sent.length)
+  assert(sent.filter(m => m.subject === 'guest').length === 1, 'guest sent ' + sent.length)
+  assert(outcomes.flat().filter(o => o === 'already_sent').length === 8, JSON.stringify(outcomes))
+})
+
+Deno.test('fix 4: a failed send clears the claim, a later call retries', async () => {
+  const { store, rows } = mockClaims()
+  const bad = countingSender(false)
+  const r1 = await oneCall(store, bad.send)
+  assert(r1.join() === 'failed,failed', r1.join())
+  assert(rows.get('order-1')?.store_email_claimed_at === null, 'store claim cleared')
+  const good = countingSender()
+  const r2 = await oneCall(store, good.send)
+  assert(r2.join() === 'sent,sent' && good.sent.length === 2, r2.join())
+})
+
+Deno.test('fix 4: admin resend forces the store email only, guest stays at one', async () => {
+  const { store } = mockClaims()
+  const { sent, send } = countingSender()
+  await Promise.all(Array.from({ length: 5 }, () => oneCall(store, send)))
+  const r = await oneCall(store, send, true)
+  assert(r.join() === 'sent,already_sent', r.join())
+  assert(sent.filter(m => m.subject === 'store').length === 2, 'store sent twice (admin resend)')
+  assert(sent.filter(m => m.subject === 'guest').length === 1, 'guest still once')
+})
+
+Deno.test('fix 4: claim error fails closed (nothing sent)', async () => {
+  const broken: ClaimStore = {
+    claim: () => Promise.reject(new Error('column "store_email_claimed_at" does not exist')),
+    release: () => Promise.resolve(),
+  }
+  const { sent, send } = countingSender()
+  const r = await sendClaimed(broken, 'order-1', 'store_email_claimed_at', { to: ['s@test.invalid'], subject: 's', html: 'h' }, send)
+  assert(r.outcome === 'claim_failed' && sent.length === 0, JSON.stringify(r))
+})
+
+Deno.test('fix 4: supabaseClaims builds UPDATE ... WHERE id AND col IS NULL RETURNING id', async () => {
+  const calls: string[] = []
+  const builder = (data: unknown) => {
+    const b = {
+      update: (v: Record<string, unknown>) => { calls.push('update ' + Object.keys(v).join() + '=' + (v[Object.keys(v)[0]] === null ? 'null' : 'now')); return b },
+      eq: (c: string, v: string) => { calls.push(`eq ${c}=${v}`); return b },
+      is: (c: string, v: null) => { calls.push(`is ${c} ${v}`); return b },
+      select: (c: string) => { calls.push('select ' + c); return Promise.resolve({ data, error: null }) },
+      then: (f: (x: unknown) => unknown) => Promise.resolve({ error: null }).then(f),
+    }
+    return b
+  }
+  let data: unknown = [{ id: 'o1' }]
+  const claims = supabaseClaims({ from: (t: string) => { calls.push('from ' + t); return builder(data) } })
+  assert(await claims.claim('o1', 'guest_email_claimed_at') === true, 'claimed')
+  assert(calls.join(' | ') === 'from orders | update guest_email_claimed_at=now | eq id=o1 | is guest_email_claimed_at null | select id', calls.join(' | '))
+  data = []
+  assert(await claims.claim('o1', 'guest_email_claimed_at') === false, 'not claimed when 0 rows')
+  calls.length = 0
+  await claims.claim('o1', 'store_email_claimed_at', true)
+  assert(!calls.some(c => c.startsWith('is ')), 'force has no IS NULL')
+  calls.length = 0
+  await claims.release('o1', 'store_email_claimed_at')
+  assert(calls.join(' | ') === 'from orders | update store_email_claimed_at=null | eq id=o1', calls.join(' | '))
 })
