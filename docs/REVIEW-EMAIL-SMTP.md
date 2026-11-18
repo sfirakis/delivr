@@ -139,3 +139,35 @@ both functions, README, docs). Local checks only.
 
 READY once the atomic claim is in place. Then re-run `deno test` and `deno check`, plus a test
 that fires 5 parallel calls on the same order and expects 1 store email and 1 guest copy.
+
+---
+
+## Re-review 2 (commit 3bbcdb4, 18/11/2026)
+
+Scope: `git diff f6f9441..3bbcdb4` (migration 019, `_shared/order-mail.ts`, notify-order, tests).
+Local checks only. Migration not applied.
+
+### Verdict: READY
+
+| Check | Result |
+|---|---|
+| `deno test ... supabase/functions/_shared/` | 15 passed, 0 failed, including 5 parallel calls → 1 store + 1 guest email. |
+| `deno check` on both functions + `_shared/*.ts` | Passes, exit 0. |
+| Race fix | **Correct.** Each channel is claimed with one `UPDATE orders SET <col>=now() WHERE id=$1 AND <col> IS NULL RETURNING id` (`.is(col, null)` + `.select('id')`). In Postgres one UPDATE is atomic per row: a second parallel UPDATE waits for the row lock, re-checks `IS NULL`, matches 0 rows and does not send. The claim is taken before the SMTP send, so the old check-then-send window is gone. The dispatch-log check still covers old orders sent before 019. |
+| Admin resend | Only the store email uses `force`. The guest claim is never forced. `force` is true only when `delivr_is_admin()` returns `true` with the caller's own JWT, which is unchanged and fails closed. |
+| Failure / clear path | A failed send clears the claim, so a later call can retry (tested). A claim error (for example the columns are missing) returns `claim_failed`: nothing is sent and a `failed` row is logged (fail closed, tested). A failed release is only logged, so the claim stays and the email is not sent again. That fails closed too, and the admin can resend the store email. |
+| Migration safety on an existing table | **Safe.** `ADD COLUMN IF NOT EXISTS` with nullable `TIMESTAMPTZ` and no default is a metadata-only change: no table rewrite, a short lock, and it can be re-run. The existing triggers on `orders` are `UPDATE OF status` only (migrations 002 and 018), so a claim UPDATE does not fire the status notification or the card-paid trigger. |
+
+### Notes (not blocking)
+
+- **Deploy order:** apply 019 **before** deploying the new notify-order. Otherwise every store and
+  guest email returns `claim_failed` (the order still goes through, but no email is sent).
+  `docs/EMAIL-SMTP.md` already says this.
+- An SMTP timeout *after* the server accepted DATA counts as a failure, so the claim is cleared
+  and a retry can deliver a second copy. This is rare and acceptable.
+- `orders_store_update` (migration 004) lets store members, drivers and admins UPDATE any column,
+  so they could set a claim back to NULL. The dispatch-log check still blocks a re-send in
+  sequence. They are trusted roles with very low impact. If you want, limit it with a
+  column-level grant later.
+- The live test is still open: TLS on `mail.actionweb.gr:465`, SPF/DKIM, and one pg_net status
+  notification still working with the service-role check.
