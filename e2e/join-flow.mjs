@@ -162,6 +162,8 @@ const shot = async (page, name, fullPage = false) => {
     if (soon !== 3) throw new Error(`${soon} paid plans say «σύντομα», expected 3`)
     if (!b.includes('Η online πληρωμή της συνδρομής με κάρτα δεν είναι ακόμα ενεργή: έρχεται σύντομα.'))
       throw new Error('subscription «σύντομα» note missing')
+    if (!b.includes('μαζί με το κατάστημα. Η online') || !b.includes('έρχεται σύντομα. Αν ξεπεράσεις'))
+      throw new Error('note sentences run together (missing spaces)')
     if (/Visa|PCI/.test(b)) throw new Error('fake payment claims are back')
     if (/you@email\.com|6900000000/.test(b)) throw new Error('placeholder contact shown')
     // Apart from «no commission» and the market example, no commission or % anywhere

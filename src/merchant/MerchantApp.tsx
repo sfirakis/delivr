@@ -11,6 +11,7 @@ import MerchantSettingsPage from './pages/SettingsPage'
 import HelpPage from '@/help/HelpPage'
 import DelivrLogo from '@/components/brand/DelivrLogo'
 import PlanUsageBanner from './PlanUsageBanner'
+import PlanBillingCard from './PlanBillingCard'
 
 type TabId = 'pos' | 'menu' | 'analytics' | 'settings' | 'help'
 
@@ -101,7 +102,12 @@ export default function MerchantApp() {
         {tab === 'pos' && <POSPage storeId={store.id} />}
         {tab === 'menu' && <MerchantMenuPage storeId={store.id} storeName={store.name} />}
         {tab === 'analytics' && <MerchantAnalyticsPage storeId={store.id} />}
-        {tab === 'settings' && <MerchantSettingsPage store={store} />}
+        {tab === 'settings' && (
+          <>
+            {store.onboarding_status === 'active' && <PlanBillingCard storeId={store.id} />}
+            <MerchantSettingsPage store={store} />
+          </>
+        )}
         {tab === 'help' && <HelpPage audience="store" />}
       </div>
     </div>
