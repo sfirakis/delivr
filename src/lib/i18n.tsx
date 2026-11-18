@@ -210,6 +210,8 @@ const dict = {
     // ── Delivr Stores: open marketplace ──
     'market.hero': 'Φαγητό, καφές και ψώνια από τα μαγαζιά της περιοχής σου',
     'market.heroSub': 'Delivery ή take away. Πληρώνεις μετρητά στην παράδοση ή στο κατάστημα.',
+    'market.launchHero': 'Τα πρώτα μαγαζιά μπαίνουν τώρα στο Delivr',
+    'market.launchSub': 'Δεν υπάρχει ακόμη κατάστημα για online παραγγελία. Έχεις μαγαζί ή κατάλυμα; Ξεκίνα δωρεάν παρακάτω.',
     'market.where': 'Πού βρίσκεσαι;',
     'market.wherePh': 'Διάλεξε περιοχή',
     'market.change': 'Αλλαγή',
@@ -437,6 +439,8 @@ const dict = {
 
     'market.hero': 'Food, coffee and groceries from the shops near you',
     'market.heroSub': 'Delivery or takeaway. Pay cash on delivery or at the shop.',
+    'market.launchHero': 'The first shops are joining Delivr now',
+    'market.launchSub': 'No store takes online orders here yet. Own a shop or a rental? Start for free below.',
     'market.where': 'Where are you?',
     'market.wherePh': 'Pick your area',
     'market.change': 'Change',

@@ -39,6 +39,12 @@ export default function MarketHomePage() {
   const areas = areasQ.data ?? []
   const all = useMemo(() => storesQ.data ?? [], [storesQ.data])
 
+  // No store is listed anywhere yet: don't show an empty area picker and a
+  // "food from the shops near you" promise — say honestly that shops are
+  // joining now and lead with the two sign-up cards (store / rental).
+  const launching = areasQ.isSuccess && storesQ.isSuccess && !area
+    && areas.length === 0 && all.length === 0
+
   // Delivery tab: stores that deliver here. Take away tab: stores near enough
   // to pick up from. Before an area is picked: everything that offers the service.
   const forService = useMemo(() => all.filter(s =>
@@ -88,11 +94,14 @@ export default function MarketHomePage() {
 
         {!area && (
           <div className="px-4 pt-3">
-            <h1 className="font-display font-black text-[22px] leading-tight">{t('market.hero')}</h1>
-            <p className="text-xs text-ink-2 mt-1">{t('market.heroSub')}</p>
+            <h1 className="font-display font-black text-[22px] leading-tight">
+              {t(launching ? 'market.launchHero' : 'market.hero')}
+            </h1>
+            <p className="text-xs text-ink-2 mt-1">{t(launching ? 'market.launchSub' : 'market.heroSub')}</p>
           </div>
         )}
 
+        {launching ? <div className="h-3" /> : (<>
         {/* Area */}
         <div className="px-4 pt-3">
           <label className="input-label" htmlFor="market-area">📍 {t('market.where')}</label>
@@ -145,16 +154,17 @@ export default function MarketHomePage() {
             ))}
           </div>
         ) : <div className="h-3" />}
+        </>)}
       </div>
 
       {/* ── Stores ── */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <div>
+        {!launching && <div>
           <h2 className="font-display font-bold text-base">
             {area ? t('market.storesIn', { area }) : t('market.storesAll')}
           </h2>
           {!area && <p className="text-xs text-ink-3 mt-0.5">{t('market.pickAreaHint')}</p>}
-        </div>
+        </div>}
 
         {storesQ.isLoading && [1, 2, 3].map(i => (
           <div key={i} className="rounded-2xl overflow-hidden border border-surface-4 bg-surface-1">
@@ -163,7 +173,7 @@ export default function MarketHomePage() {
           </div>
         ))}
 
-        {!storesQ.isLoading && shown.length === 0 && (
+        {!launching && !storesQ.isLoading && shown.length === 0 && (
           <div className="bg-surface-1 rounded-2xl border border-surface-4">
             <EmptyState
               emoji="🛵"
