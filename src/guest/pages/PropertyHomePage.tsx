@@ -12,6 +12,8 @@ import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { CartBar } from '@/guest/CartWidgets'
 import { Spinner, EmptyState, StarRating } from '@/components/ui'
 import DelivrLogo from '@/components/brand/DelivrLogo'
+import { DemoBanner, DemoBadge } from '@/components/DemoBanner'
+import { isDemoProperty, isDemoStore } from '@/lib/demo'
 
 const CATEGORY_EMOJI: Record<string, string> = {
   restaurant: '🍽️', cafe: '☕', burger: '🍔', pizza: '🍕', sushi: '🍣',
@@ -21,6 +23,8 @@ const CATEGORY_EMOJI: Record<string, string> = {
 function StoreRow({ store, service, onOpen }: { store: MatchedStore; service: ServiceType; onOpen: () => void }) {
   const { t, lang } = useI18n()
   const closed = !store.is_open_now
+  // Seeded sample store: no made-up stars, a clear «Demo» label instead.
+  const demo = isDemoStore(store.slug)
   return (
     <button
       onClick={onOpen}
@@ -36,11 +40,11 @@ function StoreRow({ store, service, onOpen }: { store: MatchedStore; service: Se
       <div className="flex-1 min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="font-display font-bold text-[15px] text-ink-1 truncate">{store.store_name}</p>
-          {store.is_promoted && <span className="badge badge-brand flex-shrink-0">★</span>}
+          {demo ? <DemoBadge /> : store.is_promoted && <span className="badge badge-brand flex-shrink-0">★</span>}
         </div>
 
         <div className="flex items-center gap-2 mt-0.5">
-          {store.rating > 0 && <StarRating rating={num(store.rating)} count={store.review_count} />}
+          {!demo && store.rating > 0 && <StarRating rating={num(store.rating)} count={store.review_count} />}
           {store.dist_km !== null && (
             <span className="text-[11px] text-ink-3">· {num(store.dist_km).toFixed(1)} km</span>
           )}
@@ -170,6 +174,7 @@ export default function PropertyHomePage() {
   const cartCount = count()
   const cartStore = storesQ.data?.find(st => st.store_id === storeId)
   const totals = cartTotals(subtotal(), cartStore, service)
+  const demo = isDemoProperty(code) || (storesQ.data ?? []).some(st => isDemoStore(st.slug))
 
   return (
     <div className="h-full flex flex-col bg-surface-2">
@@ -220,6 +225,8 @@ export default function PropertyHomePage() {
           onChange={e => setSearch(e.target.value)}
         />
       </div>
+
+      {demo && <DemoBanner className="flex-shrink-0" />}
 
       {/* Store list */}
       <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2.5">

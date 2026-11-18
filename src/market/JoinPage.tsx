@@ -252,6 +252,13 @@ export default function JoinPage() {
                   {[p.trial_days > 0 ? `${p.trial_days} μέρες δωρεάν δοκιμή` : null,
                     p.description].filter(Boolean).join(' · ')}
                 </p>
+                {num(p.price) > 0 && (
+                  // Honest until Stripe is switched on (HQ 18/11/2026): no card
+                  // payment is offered that cannot be taken yet.
+                  <p className="text-[11px] font-semibold text-amber-800 mt-1" data-testid="plan-pay-soon">
+                    💳 Πληρωμή online με κάρτα: σύντομα
+                  </p>
+                )}
               </button>
             ))}
           </div>
@@ -270,6 +277,7 @@ export default function JoinPage() {
           )}
           <p className="text-[11px] text-ink-3 mt-2">
             Δεν χρεώνεται τίποτα τώρα. Το πακέτο ενεργοποιείται μαζί με το κατάστημα.
+            Η online πληρωμή της συνδρομής με κάρτα δεν είναι ακόμα ενεργή: έρχεται σύντομα.
             Αν ξεπεράσεις το όριο, οι παραγγελίες δεν σταματούν: περνάς στο επόμενο πακέτο από τον επόμενο μήνα,
             και αν πέσουν, γυρνάς σε μικρότερο.
           </p>

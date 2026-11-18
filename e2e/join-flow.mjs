@@ -156,6 +156,12 @@ const shot = async (page, name, fullPage = false) => {
     const mail = await page.getByTestId('join-contact').locator('a').getAttribute('href')
     if (mail !== 'mailto:delivr@actionweb.gr') throw new Error(`contact link ${mail}`)
     if (/online πληρωμή έρχεται σύντομα/.test(b)) throw new Error('"online payment soon" is back')
+    // Subscription card payment is not live yet (HQ 18/11/2026): every paid
+    // plan says so honestly, the free plan does not.
+    const soon = await page.getByTestId('plan-pay-soon').count()
+    if (soon !== 3) throw new Error(`${soon} paid plans say «σύντομα», expected 3`)
+    if (!b.includes('Η online πληρωμή της συνδρομής με κάρτα δεν είναι ακόμα ενεργή: έρχεται σύντομα.'))
+      throw new Error('subscription «σύντομα» note missing')
     if (/Visa|PCI/.test(b)) throw new Error('fake payment claims are back')
     if (/you@email\.com|6900000000/.test(b)) throw new Error('placeholder contact shown')
     // Apart from «no commission» and the market example, no commission or % anywhere
