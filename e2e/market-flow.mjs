@@ -330,8 +330,12 @@ await step('An empty marketplace invites shops instead of showing nothing', asyn
   empty = true
   await page.evaluate(() => localStorage.removeItem('delivr_guest_cart'))
   await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' })
-  await page.getByText('Δεν υπάρχουν ακόμη καταστήματα εδώ').waitFor()
-  await page.getByRole('button', { name: 'Γράψου δωρεάν' }).click()
+  // No listed store anywhere: honest launch copy, no empty area picker (PR #11).
+  await page.getByText('Τα πρώτα μαγαζιά μπαίνουν τώρα στο Delivr').waitFor()
+  if (await page.locator('#market-area').count()) throw new Error('empty area picker still shown')
+  if (await page.getByText('Φαγητό, καφές και ψώνια από τα μαγαζιά της περιοχής σου').count())
+    throw new Error('marketplace promise still shown with no stores')
+  await page.getByRole('link', { name: /Γράψου δωρεάν/ }).click()
   await page.waitForURL('**/join')
 })
 
