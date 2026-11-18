@@ -2,16 +2,20 @@
 // notify-order — sends a new order to the store
 //
 // Channels:
-//   • Email (Resend) with a one-tap confirmation link that needs no login
+//   • Email (SMTP via the product mailbox, Resend only as fallback) with a
+//     one-tap confirmation link that needs no login
 //   • Copy to the platform support address and, optionally, the property owner
 //   • Returns a ready-to-open wa.me link for the WhatsApp hand-off
 //
 // Every attempt is written to order_dispatch_log, so the admin dashboard can
-// show what actually left the building. A missing RESEND_API_KEY is not an
-// error: the order still stands and the store link is returned for manual use.
+// show what actually left the building. A missing mail transport (no SMTP_*
+// and no RESEND_API_KEY) is not an error: the order still stands and the store
+// link is returned for manual use.
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+// @deno-types="npm:@types/nodemailer@6.4.17"
+import nodemailer from 'npm:nodemailer@6.9.16'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +30,68 @@ const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const eur = (n: unknown) => `${Number(n ?? 0).toFixed(2)} €`
+
+// ── Mail transport ───────────────────────────────────────────
+// SMTP first: every product sends from its own @actionweb.gr mailbox
+// (HQ decision 17/11/2026). Resend is only a fallback, used when SMTP is not
+// configured and RESEND_API_KEY is set. Secrets live in Supabase → Edge
+// Functions → Secrets, never in code. See docs/EMAIL-SMTP.md.
+//
+// Note: Supabase Edge blocks outbound ports 25 and 587, so use 465 (TLS).
+type MailProvider = 'smtp' | 'resend' | 'none'
+interface Mail { to: string[]; subject: string; html: string; replyTo?: string }
+interface MailResult { ok: boolean; provider: MailProvider; error?: string }
+
+const env = (k: string) => (Deno.env.get(k) ?? '').trim()
+const NO_TRANSPORT = 'no mail transport: set SMTP_HOST/SMTP_USER/SMTP_PASS (or RESEND_API_KEY)'
+
+function mailProvider(): MailProvider {
+  if (env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS')) return 'smtp'
+  if (env('RESEND_API_KEY')) return 'resend'
+  return 'none'
+}
+
+async function sendMail(m: Mail): Promise<MailResult> {
+  const provider = mailProvider()
+  const to = m.to.filter(Boolean)
+  if (provider === 'none') return { ok: false, provider, error: NO_TRANSPORT }
+  if (to.length === 0) return { ok: false, provider, error: 'no recipient' }
+
+  try {
+    if (provider === 'smtp') {
+      const port = Number(env('SMTP_PORT') || 465)
+      const secure = env('SMTP_SECURE') ? env('SMTP_SECURE') === 'true' : port === 465
+      const transport = nodemailer.createTransport({
+        host: env('SMTP_HOST'), port, secure,
+        auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') },
+        connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+      })
+      try {
+        await transport.sendMail({
+          from: env('SMTP_FROM') || `Delivr <${env('SMTP_USER')}>`,
+          to: to.join(', '), subject: m.subject, html: m.html,
+          replyTo: m.replyTo || undefined,
+        })
+      } finally {
+        transport.close()
+      }
+      return { ok: true, provider }
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env('RESEND_FROM') || env('SMTP_FROM') || 'Delivr <onboarding@resend.dev>',
+        to, subject: m.subject, html: m.html, reply_to: m.replyTo || undefined,
+      }),
+    })
+    if (res.ok) return { ok: true, provider }
+    return { ok: false, provider, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 400)}` }
+  } catch (err) {
+    return { ok: false, provider, error: String((err as Error)?.message ?? err).slice(0, 500) }
+  }
+}
 
 interface OrderItem {
   name: string; quantity: number; price: number
@@ -224,19 +290,19 @@ Deno.serve(async (req: Request) => {
     const logs: Record<string, unknown>[] = []
 
     // ── Email ────────────────────────────────────────────────
-    const resendKey = Deno.env.get('RESEND_API_KEY')
-    const from = Deno.env.get('RESEND_FROM') ?? 'Delivr <onboarding@resend.dev>'
+    const provider = mailProvider()
     const storeEmail = store.order_email || store.email
     const wantsEmail = (settings?.notify_store_email ?? true) && store.notify_email !== false
 
-    if (!resendKey) {
+    if (provider === 'none') {
+      // Result value kept as before so existing callers/tests keep working.
       results.email = 'skipped_no_key'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
-                  provider: 'resend', error: 'RESEND_API_KEY not configured' })
+                  provider: 'none', error: NO_TRANSPORT })
     } else if (!wantsEmail || !storeEmail) {
       results.email = 'skipped_disabled'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
-                  provider: 'resend', error: !storeEmail ? 'store has no email' : 'notifications disabled' })
+                  provider, error: !storeEmail ? 'store has no email' : 'notifications disabled' })
     } else {
       const to = [storeEmail]
       if (settings?.support_email) to.push(settings.support_email)
@@ -246,21 +312,15 @@ Deno.serve(async (req: Request) => {
       const subject = T[lang].subject(order.order_number,
         order.delivery_type === 'delivery' ? T[lang].delivery : T[lang].takeaway)
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, subject, html, reply_to: settings?.support_email ?? undefined }),
-      })
-
-      const body = await res.text()
-      results.email = res.ok ? 'sent' : `failed_${res.status}`
+      const r = await sendMail({ to, subject, html, replyTo: settings?.support_email ?? undefined })
+      results.email = r.ok ? 'sent' : 'failed'
       logs.push({ order_id, channel: 'email', target: to.join(', '),
-                  status: res.ok ? 'sent' : 'failed', provider: 'resend',
-                  error: res.ok ? null : body.slice(0, 500) })
+                  status: r.ok ? 'sent' : 'failed', provider: r.provider,
+                  error: r.ok ? null : r.error ?? null })
     }
 
     // ── Guest confirmation copy ──────────────────────────────
-    if (resendKey && order.guest_email) {
+    if (provider !== 'none' && order.guest_email) {
       const guestHtml = `<!doctype html><html><body style="font-family:Verdana,Arial,sans-serif;padding:20px;">
         <h2 style="color:#1a1814;">${lang === 'el' ? 'Η παραγγελία σου καταχωρήθηκε' : 'Your order was placed'}</h2>
         <p>${lang === 'el' ? 'Αριθμός' : 'Number'}: <strong>${esc(order.order_number)}</strong> — ${esc(store.name)}</p>
@@ -270,18 +330,16 @@ Deno.serve(async (req: Request) => {
            ${lang === 'el' ? 'Παρακολούθηση παραγγελίας' : 'Track your order'}</a></p>
       </body></html>`
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from, to: [order.guest_email],
-          subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
-          html: guestHtml,
-        }),
+      const r = await sendMail({
+        to: [order.guest_email],
+        subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
+        html: guestHtml,
+        replyTo: settings?.support_email ?? undefined,
       })
-      results.guest_email = res.ok ? 'sent' : 'failed'
+      results.guest_email = r.ok ? 'sent' : 'failed'
       logs.push({ order_id, channel: 'email', target: order.guest_email,
-                  status: res.ok ? 'sent' : 'failed', provider: 'resend' })
+                  status: r.ok ? 'sent' : 'failed', provider: r.provider,
+                  error: r.ok ? null : r.error ?? null })
     }
 
     // ── WhatsApp hand-off link ───────────────────────────────

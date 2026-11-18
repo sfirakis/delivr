@@ -1,9 +1,12 @@
 // supabase/functions/send-notification/index.ts
 // Multi-channel notification dispatcher
-// Channels: In-app (Supabase), Push (FCM), SMS (Twilio), Email (Resend)
+// Channels: In-app (Supabase), Push (FCM), SMS (Twilio),
+//           Email (SMTP via the product mailbox, Resend only as fallback)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// @deno-types="npm:@types/nodemailer@6.4.17"
+import nodemailer from 'npm:nodemailer@6.9.16'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,25 +37,72 @@ async function sendSMS(to: string, body: string) {
   return data
 }
 
-// ─── Email via Resend ─────────────────────────────────────────
-async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return
+// ── Mail transport ───────────────────────────────────────────
+// SMTP first: every product sends from its own @actionweb.gr mailbox
+// (HQ decision 17/11/2026). Resend is only a fallback, used when SMTP is not
+// configured and RESEND_API_KEY is set. Secrets live in Supabase → Edge
+// Functions → Secrets, never in code. See docs/EMAIL-SMTP.md.
+//
+// Note: Supabase Edge blocks outbound ports 25 and 587, so use 465 (TLS).
+type MailProvider = 'smtp' | 'resend' | 'none'
+interface Mail { to: string[]; subject: string; html: string; replyTo?: string }
+interface MailResult { ok: boolean; provider: MailProvider; error?: string }
 
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'Delivr <orders@delivr.app>',
-      to:   [to],
-      subject,
-      html,
-    }),
-  })
-  return response.json()
+const env = (k: string) => (Deno.env.get(k) ?? '').trim()
+const NO_TRANSPORT = 'no mail transport: set SMTP_HOST/SMTP_USER/SMTP_PASS (or RESEND_API_KEY)'
+
+function mailProvider(): MailProvider {
+  if (env('SMTP_HOST') && env('SMTP_USER') && env('SMTP_PASS')) return 'smtp'
+  if (env('RESEND_API_KEY')) return 'resend'
+  return 'none'
+}
+
+async function sendMail(m: Mail): Promise<MailResult> {
+  const provider = mailProvider()
+  const to = m.to.filter(Boolean)
+  if (provider === 'none') return { ok: false, provider, error: NO_TRANSPORT }
+  if (to.length === 0) return { ok: false, provider, error: 'no recipient' }
+
+  try {
+    if (provider === 'smtp') {
+      const port = Number(env('SMTP_PORT') || 465)
+      const secure = env('SMTP_SECURE') ? env('SMTP_SECURE') === 'true' : port === 465
+      const transport = nodemailer.createTransport({
+        host: env('SMTP_HOST'), port, secure,
+        auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') },
+        connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
+      })
+      try {
+        await transport.sendMail({
+          from: env('SMTP_FROM') || `Delivr <${env('SMTP_USER')}>`,
+          to: to.join(', '), subject: m.subject, html: m.html,
+          replyTo: m.replyTo || undefined,
+        })
+      } finally {
+        transport.close()
+      }
+      return { ok: true, provider }
+    }
+
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: env('RESEND_FROM') || env('SMTP_FROM') || 'Delivr <onboarding@resend.dev>',
+        to, subject: m.subject, html: m.html, reply_to: m.replyTo || undefined,
+      }),
+    })
+    if (res.ok) return { ok: true, provider }
+    return { ok: false, provider, error: `HTTP ${res.status}: ${(await res.text()).slice(0, 400)}` }
+  } catch (err) {
+    return { ok: false, provider, error: String((err as Error)?.message ?? err).slice(0, 500) }
+  }
+}
+
+async function sendEmail(to: string, subject: string, html: string) {
+  const r = await sendMail({ to: [to], subject, html })
+  if (!r.ok && r.provider !== 'none') console.error('email error:', r.provider, r.error)
+  return r
 }
 
 // ─── Push via FCM (Firebase Cloud Messaging) ──────────────────
