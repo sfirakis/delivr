@@ -99,7 +99,7 @@ const invoice = (over = {}) => ({
   id: 'in_test_1', object: 'invoice', customer: 'cus_test_S1', subscription: 'sub_test_S1',
   amount_paid: 9796, billing_reason: 'subscription_cycle',
   subscription_details: { metadata: META },
-  lines: { data: [{ price: { id: 'price_test_plus' }, period: { start: now(), end: now() + 30 * 86400 } }] },
+  lines: { data: [{ price: { id: 'price_test_plus' }, proration: false, period: { start: now(), end: now() + 30 * 86400 } }] },
   ...over,
 })
 const subscription = (over = {}) => ({
@@ -210,6 +210,34 @@ await step('Subscription updated to the Premium price → Premium 150 € (price
   assert(s.plan === 'Premium' && Number(s.price) === 150 && s.stripe_price_id === 'price_test_premium', `${s.plan} ${s.price}`)
   const trial = await send(event('customer.subscription.updated', subscription({ status: 'incomplete' })))
   assert(trial.body.ignored === 'status_incomplete', JSON.stringify(trial.body))
+})
+
+await step('Proration invoice (1st line = credit for the OLD price) keeps Premium; period end only from the regular line', async () => {
+  const before = await s1sub()
+  const t0 = now()
+  // Classic shape: only proration lines → nothing is taken from the lines.
+  const r1 = await send(event('invoice.paid', invoice({ billing_reason: 'subscription_update', amount_paid: 8680, lines: { data: [
+    { price: { id: 'price_test_plus' }, proration: true, amount: -7900, period: { start: t0, end: t0 + 20 * 86400 } },
+    { price: { id: 'price_test_premium' }, proration: true, amount: 15000, period: { start: t0, end: t0 + 20 * 86400 } },
+  ] } })))
+  assert(r1.status === 200 && r1.body.result?.ok, JSON.stringify(r1.body))
+  let s = await s1sub()
+  assert(s.plan === 'Premium' && Number(s.price) === 150 && s.stripe_price_id === 'price_test_premium', `went back to ${s.plan} / ${s.stripe_price_id}`)
+  assert(String(s.current_period_end) === String(before.current_period_end), 'period end taken from a proration line')
+  // Basil shape: credit first, then the regular line (parent.subscription_item_details.proration=false).
+  const end = t0 + 40 * 86400
+  const r2 = await send(event('invoice.paid', invoice({ amount_paid: 23680, lines: { data: [
+    { pricing: { price_details: { price: 'price_test_plus' } }, parent: { subscription_item_details: { proration: true } }, period: { end: t0 } },
+    { pricing: { price_details: { price: 'price_test_premium' } }, parent: { subscription_item_details: { proration: false } }, period: { end } },
+  ] } })))
+  assert(r2.status === 200 && r2.body.result?.ok, JSON.stringify(r2.body))
+  s = await s1sub()
+  assert(s.plan === 'Premium' && s.stripe_price_id === 'price_test_premium', `went back to ${s.plan}`)
+  assert(new Date(s.current_period_end).getTime() === end * 1000, `period end ${s.current_period_end}`)
+  // Even a regular line naming another price does not move a row this subscription owns.
+  await send(event('invoice.paid', invoice({ lines: { data: [{ price: { id: 'price_test_plus' }, proration: false, period: { end } }] } })))
+  s = await s1sub()
+  assert(s.plan === 'Premium', `invoice moved the plan to ${s.plan}`)
 })
 
 // ═══ 7. Ledger & automatic moves leave Stripe rows alone ═════════════════
@@ -477,7 +505,7 @@ await step('D4 unknown Stripe price is not our plan; portal uses STRIPE_PORTAL_C
   assert(r.body.ignored === 'unknown_price', JSON.stringify(r.body))
   const inv = await send(event('invoice.paid', invoice({ customer: 'cus_S2', subscription: 'sub_S2',
     subscription_details: { metadata: { app: 'delivr', plan: 'premium', store_id: S2 } },
-    lines: { data: [{ price: { id: 'price_someone_else' } }] } })))
+    lines: { data: [{ price: { id: 'price_someone_else' }, proration: false }] } })))
   assert(inv.body.ignored === 'unknown_price', JSON.stringify(inv.body))
   const withPortal = readConfig(k => (k === 'STRIPE_PORTAL_CONFIGURATION_ID' ? 'bpc_test_delivr' : ENV[k]))
   const { stripe, calls } = mockStripe(PRICES)

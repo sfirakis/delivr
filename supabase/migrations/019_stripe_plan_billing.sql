@@ -79,6 +79,7 @@ DECLARE
   v_plan   subscription_plans%ROWTYPE;
   v_status TEXT;
   v_res    JSONB;
+  v_set_plan BOOLEAN;
 BEGIN
   IF p_action NOT IN ('activate', 'past_due', 'cancel', 'link') THEN
     RAISE EXCEPTION 'BAD_ACTION' USING ERRCODE = '22023';
@@ -166,6 +167,11 @@ BEGIN
       v_res := jsonb_build_object('ignored', 'other_live_subscription', 'conflict', true, 'store_id', v_store,
                                   'live_subscription', v_sub.stripe_subscription_id, 'incoming_subscription', p_subscription);
     ELSIF v_sub.id IS NOT NULL THEN
+      -- Invoices never move the plan of a row this Stripe subscription already
+      -- owns (proration lines can name the old price); customer.subscription.*
+      -- events do. An invoice may set it only when it first links the row.
+      v_set_plan := coalesce(p_event_type, '') NOT LIKE 'invoice.%' OR v_sub.stripe_subscription_id IS NULL;
+      IF NOT v_set_plan THEN v_plan := NULL; END IF;
       UPDATE subscriptions SET
         plan_id       = coalesce(v_plan.id, plan_id),
         price         = coalesce(v_plan.price, price),
@@ -174,7 +180,7 @@ BEGIN
         trial_ends_on = CASE WHEN v_status = 'trial' THEN coalesce(p_period_end::DATE, trial_ends_on) ELSE trial_ends_on END,
         stripe_customer_id     = coalesce(p_customer, stripe_customer_id),
         stripe_subscription_id = coalesce(p_subscription, stripe_subscription_id),
-        stripe_price_id        = coalesce(p_price, stripe_price_id),
+        stripe_price_id        = CASE WHEN v_set_plan THEN coalesce(p_price, stripe_price_id) ELSE stripe_price_id END,
         current_period_end     = coalesce(p_period_end, current_period_end),
         notes = CASE WHEN v_plan.id IS NOT NULL AND v_plan.id <> plan_id
                      THEN concat_ws(E'\n', nullif(notes, ''), format('Stripe: πακέτο %s (%s)', v_plan.name, to_char(now(), 'DD/MM/YYYY')))

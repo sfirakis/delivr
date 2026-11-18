@@ -217,8 +217,15 @@ export function decide(event: Obj, cfg: BillingConfig): Decision {
       if (!(Number(o.amount_paid) > 0)) return { ignore: 'zero_amount' }
       const subscription = idOf(o.subscription) ?? idOf(o?.parent?.subscription_details?.subscription)
       if (!subscription) return { ignore: 'no_subscription' }
-      const line = o?.lines?.data?.[0]
-      const linePrice = idOf(line?.price) ?? idOf(line?.pricing?.price_details?.price)
+      // Only the regular (non-proration) subscription line says anything about
+      // the current price / period: after a plan change the first line can be
+      // the credit for the OLD price. No such line → take nothing from lines.
+      // The plan of a row already on this Stripe subscription is owned by the
+      // customer.subscription.* events; delivr_stripe_apply() uses an invoice's
+      // plan only to create or first link a row (019).
+      const line = (o?.lines?.data ?? []).find((l: Obj) =>
+        l?.proration === false || l?.parent?.subscription_item_details?.proration === false) ?? null
+      const linePrice = line ? (idOf(line.price) ?? idOf(line.pricing?.price_details?.price)) : null
       const plan = linePrice ? planKeyForPrice(cfg, linePrice) : planKeyFromName(m?.plan)
       if (linePrice && !plan) return { ignore: 'unknown_price' }
       return { apply: { ...base, action: 'activate', store_id: uuidOrNull(m?.store_id),
