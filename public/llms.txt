@@ -1,0 +1,21 @@
+# Delivr
+
+> Delivr is a web platform for ordering from local shops with delivery or take away. Customers order without an account and pay the shop directly, in cash or by card in person (never online). Accommodation owners can place a QR code in each room so guests order from the shops of the neighbourhood. Built and run by ActionWeb in Elounda, Crete, Greece. Available in Greek and English.
+
+Delivr has two product lines on one platform:
+
+- **Delivr Stores:** an open marketplace. A customer picks their area, chooses delivery or take away, and sees the participating shops that serve that area. Any shop can sign up on its own at /join; each shop is approved by the platform before it appears.
+- **Delivr QR:** for villas, apartments and hotels. Each room has a QR code; the guest scans it and sees only the shops that deliver to that address.
+
+Shops pay a monthly subscription that covers a set number of orders per month, with no commission per order. The current plans are listed on the sign-up page (/join); signing up is free. The platform is launching: the first shops are joining now, so the marketplace may not list shops in every area yet.
+
+## Pages
+
+- [Delivr Stores (marketplace home)](https://delivr-ten.vercel.app/): choose your area, delivery or take away
+- [Put your shop on Delivr](https://delivr-ten.vercel.app/join): sign-up and plans for shops
+- [Delivr QR](https://delivr-ten.vercel.app/qr): for guests who scan the QR in their accommodation
+- [Terms](https://delivr-ten.vercel.app/terms)
+
+## Company
+
+- [ActionWeb](https://actionweb.gr/): Ανδρέα Παπανδρέου 50, 72053 Ελούντα, Κρήτη, Greece · +30 28411 00781 · info@actionweb.gr

@@ -1,5 +1,7 @@
-# Delivr — only the guest-facing pages are worth indexing.
+# Delivr: public pages (marketplace, store menus, QR landing, sign-up) are indexable.
+# Back-office apps and private order links are not.
 User-agent: *
+Allow: /
 Allow: /qr
 Allow: /t
 Allow: /s
@@ -7,3 +9,19 @@ Disallow: /admin
 Disallow: /merchant
 Disallow: /driver
 Disallow: /auth
+Disallow: /orders
+
+# AI search and assistant crawlers are welcome on the same public pages.
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ClaudeBot
+User-agent: PerplexityBot
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+Disallow: /merchant
+Disallow: /driver
+Disallow: /auth
+Disallow: /orders
+
+Sitemap: https://delivr-ten.vercel.app/sitemap.xml
