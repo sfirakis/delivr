@@ -55,6 +55,9 @@ const dict = {
     'guest.callSupport': 'Κλήση',
     'guest.emailSupport': 'Email',
     'guest.whatsappSupport': 'WhatsApp',
+    'demo.badge': 'Demo',
+    'demo.title': 'Demo: δοκιμαστική σελίδα',
+    'demo.body': 'Τα καταστήματα, τα μενού, οι βαθμολογίες και οι κριτικές εδώ είναι παραδείγματα, όχι πραγματικές επιχειρήσεις. Μην κάνετε πραγματική παραγγελία.',
 
     // store / menu
     'store.menu': 'Μενού',
@@ -293,6 +296,9 @@ const dict = {
     'guest.callSupport': 'Call',
     'guest.emailSupport': 'Email',
     'guest.whatsappSupport': 'WhatsApp',
+    'demo.badge': 'Demo',
+    'demo.title': 'Demo: sample page',
+    'demo.body': 'The stores, menus, ratings and reviews here are examples, not real businesses. Please do not place a real order.',
 
     'store.menu': 'Menu',
     'store.info': 'Info',
