@@ -8,6 +8,8 @@ import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { CartBar, CartProgress } from '@/guest/CartWidgets'
 import { CategoryChips, ItemSheet, MenuSections, useGroupedMenu } from '@/guest/StoreMenu'
+import { DemoBanner } from '@/components/DemoBanner'
+import { isDemoProperty, isDemoStore } from '@/lib/demo'
 import { Spinner, EmptyState } from '@/components/ui'
 
 export default function GuestStorePage() {
@@ -58,6 +60,7 @@ export default function GuestStorePage() {
           </div>
         </div>
 
+        {(isDemoProperty(code) || isDemoStore(store?.slug)) && <DemoBanner />}
         {store && !store.is_open_now && (
           <p className="bg-amber-50 text-amber-800 text-xs px-4 py-2 border-t border-amber-100">
             ⏰ {t('store.closedNow')}

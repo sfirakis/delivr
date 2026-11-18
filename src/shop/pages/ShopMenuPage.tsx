@@ -8,6 +8,8 @@ import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useGuestCart, cartTotals } from '@/guest/guestCart'
 import { CartBar, CartProgress } from '@/guest/CartWidgets'
 import { CategoryChips, ItemSheet, MenuSections, useGroupedMenu } from '@/guest/StoreMenu'
+import { DemoBanner } from '@/components/DemoBanner'
+import { isDemoStore } from '@/lib/demo'
 import { Spinner, EmptyState } from '@/components/ui'
 import { useShop } from '@/shop/useShop'
 import { useShopMode } from '@/shop/shopMode'
@@ -74,6 +76,7 @@ export default function ShopMenuPage() {
           <LangToggle />
         </div>
 
+        {isDemoStore(slug) && <DemoBanner className="mt-3" />}
         {store.intro && <p className="px-4 pt-2 text-xs text-ink-2">{store.intro}</p>}
 
         {/* Delivery or takeaway */}

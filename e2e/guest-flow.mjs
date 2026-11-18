@@ -177,6 +177,24 @@ await step('QR landing shows the property and the stores that serve it', async (
 })
 await shot(`${OUT}/01-qr-home.png`)
 
+// 1b — Honesty (HQ 18/11/2026): the seeded sample stores are labelled «Demo»
+// and their made-up stars / review counts are not shown as real reviews.
+await step('Demo property and stores carry a clear «Demo» label, no fake ratings', async () => {
+  await page.getByTestId('demo-banner').waitFor({ timeout: 8000 })
+  const banner = await page.getByTestId('demo-banner').innerText()
+  if (!banner.includes('Demo') || !banner.includes('παραδείγματα')) throw new Error(`banner text: ${banner}`)
+  const badges = await page.getByTestId('demo-badge').count()
+  if (badges !== STORES.length) throw new Error(`${badges} Demo badges for ${STORES.length} stores`)
+  const body = await page.locator('body').innerText()
+  if (body.includes('★') || /\((489|331)\)/.test(body)) throw new Error('fake rating / review count still shown')
+  await page.getByRole('button', { name: 'EN' }).click()
+  await page.waitForTimeout(300)
+  const en = await page.getByTestId('demo-banner').innerText()
+  if (!en.includes('examples, not real businesses')) throw new Error(`EN banner: ${en}`)
+  await page.getByRole('button', { name: 'ΕΛ' }).click()
+  await page.waitForTimeout(300)
+})
+
 // 2 — Language switch
 await step('EN/ΕΛ switcher translates the interface', async () => {
   await page.getByRole('button', { name: 'EN' }).click()

@@ -1,6 +1,8 @@
 import type { MarketStore, ServiceType } from '@/lib/api'
 import { money, num } from '@/lib/format'
 import { useI18n, type TKey } from '@/lib/i18n'
+import { isDemoStore } from '@/lib/demo'
+import { DemoBadge } from '@/components/DemoBanner'
 
 export const CATEGORY_EMOJI: Record<string, string> = {
   restaurant: '🍴', cafe: '☕', burger: '🍔', pizza: '🍕', sushi: '🍣',
@@ -56,7 +58,7 @@ export default function MarketStoreCard({ store, service, onOpen }: {
               {store.city ? ` · ${store.city}` : ''}
             </p>
           </div>
-          {store.review_count > 0 && (
+          {isDemoStore(store.slug) ? <DemoBadge /> : store.review_count > 0 && (
             <span className="text-xs font-semibold text-ink-1 whitespace-nowrap">
               ★ {num(store.rating).toFixed(1)} <span className="text-ink-3 font-normal">({store.review_count})</span>
             </span>
