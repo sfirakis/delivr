@@ -283,7 +283,10 @@ const testDb = {
     return r ? { ...r, price: Number(r.price) } : null
   },
   async customerFor(id) { return (await one(`SELECT stripe_customer_id FROM store_billing_accounts WHERE store_id = $1`, [id]))?.stripe_customer_id ?? null },
-  async saveCustomer(id, c) { await db.query(`INSERT INTO store_billing_accounts (store_id, stripe_customer_id) VALUES ($1, $2) ON CONFLICT (store_id) DO NOTHING`, [id, c]) },
+  async saveCustomer(id, c) {
+    await db.query(`INSERT INTO store_billing_accounts (store_id, stripe_customer_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [id, c])
+    return (await one(`SELECT stripe_customer_id FROM store_billing_accounts WHERE store_id = $1`, [id])).stripe_customer_id
+  },
   async liveStripeSubscription(id) {
     const r = await one(`SELECT s.status, p.name AS plan_name FROM subscriptions s JOIN subscription_plans p ON p.id = s.plan_id
                           WHERE party_type = 'store' AND party_id = $1 AND status IN ('trial','active','past_due','paused')
@@ -294,14 +297,19 @@ const testDb = {
   async appUrl() { return 'https://delivr.example/' },
 }
 
-function mockStripe(prices) {
+function mockStripe(prices, { taxRate = TAX_RATE, subs = [], open = [] } = {}) {
   const calls = []
   const fetchImpl = async (url, init) => {
     const u = new URL(url)
     const params = new URLSearchParams(init.body ?? u.search.slice(1))
-    calls.push({ method: init.method, path: u.pathname, params, auth: init.headers.Authorization })
+    calls.push({ method: init.method, path: u.pathname, params, auth: init.headers.Authorization,
+                 idem: init.headers['Idempotency-Key'] })
     const ok = body => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (u.pathname.startsWith('/v1/prices/')) return ok(prices[u.pathname.split('/').pop()] ?? {})
+    if (u.pathname.startsWith('/v1/tax_rates/')) return ok(taxRate)
+    if (u.pathname === '/v1/subscriptions' && init.method === 'GET') return ok({ data: subs })
+    if (u.pathname === '/v1/checkout/sessions' && init.method === 'GET') return ok({ data: open })
+    if (/\/v1\/checkout\/sessions\/[^/]+\/expire$/.test(u.pathname)) return ok({ status: 'expired' })
     if (u.pathname === '/v1/customers') return ok({ id: 'cus_new_S3' })
     if (u.pathname === '/v1/checkout/sessions') return ok({ id: 'cs_new', url: 'https://checkout.stripe.test/c/cs_new' })
     if (u.pathname === '/v1/billing_portal/sessions') return ok({ url: 'https://billing.stripe.test/p/1' })
@@ -309,6 +317,7 @@ function mockStripe(prices) {
   }
   return { calls, stripe: stripeCaller(fetchImpl, ENV.STRIPE_SECRET_KEY) }
 }
+const TAX_RATE = { id: 'txr_test_vat24', active: true, inclusive: false, percentage: 24 }
 const PRICES = {
   price_test_pro: { id: 'price_test_pro', active: true, unit_amount: 3900, currency: 'eur', recurring: { interval: 'month' }, tax_behavior: 'exclusive' },
   price_test_plus: { id: 'price_test_plus', active: true, unit_amount: 7900, currency: 'eur', recurring: { interval: 'month' }, tax_behavior: 'exclusive' },
@@ -334,7 +343,8 @@ await step('Checkout: subscription mode, app=delivr + plan + store_id on session
   assert(r.status === 200 && r.body.url === 'https://checkout.stripe.test/c/cs_new', JSON.stringify(r.body))
   const cust = calls.find(c => c.path === '/v1/customers')
   assert(cust?.params.get('metadata[app]') === 'delivr' && cust.params.get('metadata[store_id]') === S3, 'customer metadata')
-  const s = calls.find(c => c.path === '/v1/checkout/sessions').params
+  assert(cust.idem === `delivr-customer-${S3}`, 'customer creation must be idempotent per store')
+  const s = calls.find(c => c.path === '/v1/checkout/sessions' && c.method === 'POST').params
   const expect = {
     mode: 'subscription', customer: 'cus_new_S3', client_reference_id: S3,
     'line_items[0][price]': 'price_test_plus', 'line_items[0][quantity]': '1',
@@ -353,7 +363,7 @@ await step('Checkout refuses a Stripe price that differs from the published plan
   const { stripe, calls } = mockStripe({ ...PRICES, price_test_pro: { ...PRICES.price_test_pro, unit_amount: 2900 } })
   const r = await startCheckout({ cfg, stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S3, planKey: 'pro' })
   assert(r.status === 503 && r.body.error === 'price_mismatch', JSON.stringify(r.body))
-  assert(!calls.some(c => c.path === '/v1/checkout/sessions'), 'session was created')
+  assert(!calls.some(c => c.path === '/v1/checkout/sessions' && c.method === 'POST'), 'session was created')
   const { stripe: s2 } = mockStripe({ ...PRICES, price_test_pro: { ...PRICES.price_test_pro, tax_behavior: 'inclusive' } })
   const r2 = await startCheckout({ cfg, stripe: s2, db: testDb, user: { id: OWNER, email: null }, storeId: S3, planKey: 'pro' })
   assert(r2.status === 503, 'VAT-inclusive price must be refused (+ ΦΠΑ)')
@@ -376,7 +386,7 @@ await step('Checkout: staff (not owner/manager) 403, bad plan 400, already card-
   const { stripe: s3, calls } = mockStripe(PRICES)
   const back = await startCheckout({ cfg, stripe: s3, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
   assert(back.status === 200, JSON.stringify(back.body))
-  const p = calls.find(c => c.path === '/v1/checkout/sessions').params
+  const p = calls.find(c => c.path === '/v1/checkout/sessions' && c.method === 'POST').params
   assert(p.get('subscription_data[trial_period_days]') === null, 'second trial granted')
   assert(p.get('customer') === 'cus_test_S1' && !calls.some(c => c.path === '/v1/customers'), 'customer not reused')
 })
@@ -390,6 +400,106 @@ await step('Portal: owner gets the Stripe portal (cancel), others 403, store wit
   assert((await startPortal({ cfg, stripe, db: testDb, user: { id: STAFF }, storeId: S3 })).status === 403, 'staff')
   assert((await startPortal({ cfg, stripe, db: testDb, user: { id: ADMIN }, storeId: S2 })).status === 404, 'no customer')
   assert((await startPortal({ cfg: readConfig(() => undefined), stripe, db: testDb, user: { id: OWNER }, storeId: S3 })).status === 503, 'off')
+})
+
+// ═══ 11. Review fixes (D1–D7) ════════════════════════════════════════════
+await step('D2 VAT on top is guaranteed: wrong / inclusive / inactive Tax Rate, or Stripe Tax with a non-exclusive price → 503', async () => {
+  for (const tr of [{ ...TAX_RATE, percentage: 23 }, { ...TAX_RATE, inclusive: true }, { ...TAX_RATE, active: false }]) {
+    const { stripe, calls } = mockStripe(PRICES, { taxRate: tr })
+    const r = await startCheckout({ cfg, stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+    assert(r.status === 503 && r.body.error === 'tax_rate_mismatch', `${JSON.stringify(tr)} → ${JSON.stringify(r.body)}`)
+    assert(!calls.some(c => c.path === '/v1/checkout/sessions' && c.method === 'POST'), 'session created')
+  }
+  const auto = readConfig(k => (k === 'STRIPE_TAX_RATE_ID' ? undefined : k === 'STRIPE_AUTOMATIC_TAX' ? 'true' : ENV[k]))
+  const { stripe } = mockStripe({ ...PRICES, price_test_pro: { ...PRICES.price_test_pro, tax_behavior: 'unspecified' } })
+  const r = await startCheckout({ cfg: auto, stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+  assert(r.status === 503 && r.body.error === 'price_mismatch', JSON.stringify(r.body))
+  const { stripe: ok2, calls } = mockStripe(PRICES)
+  const r2 = await startCheckout({ cfg: auto, stripe: ok2, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+  const sp = calls.find(c => c.path === '/v1/checkout/sessions' && c.method === 'POST')?.params
+  assert(r2.status === 200 && sp.get('automatic_tax[enabled]') === 'true' && sp.get('subscription_data[default_tax_rates][0]') === null,
+         'Stripe Tax session params')
+})
+
+await step('D3 Stripe already has a live subscription (webhook not in yet) → 409; open checkout reused / other plan expired', async () => {
+  const { stripe, calls } = mockStripe(PRICES, { subs: [{ id: 'sub_race', status: 'incomplete' }] })
+  const r = await startCheckout({ cfg, stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+  assert(r.status === 409 && r.body.code === 'already_subscribed', JSON.stringify(r.body))
+  assert(!calls.some(c => c.path === '/v1/checkout/sessions' && c.method === 'POST'), 'session created')
+  const same = mockStripe(PRICES, { open: [{ id: 'cs_open', url: 'https://checkout.stripe.test/c/cs_open', metadata: { app: 'delivr', plan: 'pro', store_id: S1 } }] })
+  const r2 = await startCheckout({ cfg, stripe: same.stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+  assert(r2.status === 200 && r2.body.url === 'https://checkout.stripe.test/c/cs_open' && r2.body.reused, JSON.stringify(r2.body))
+  assert(!same.calls.some(c => c.path === '/v1/checkout/sessions' && c.method === 'POST'), 'second session created')
+  const other = mockStripe(PRICES, { open: [{ id: 'cs_old', url: 'https://x', metadata: { app: 'delivr', plan: 'premium' } },
+                                            { id: 'cs_foreign', url: 'https://y', metadata: { app: 'staylink' } }] })
+  const r3 = await startCheckout({ cfg, stripe: other.stripe, db: testDb, user: { id: OWNER, email: null }, storeId: S1, planKey: 'pro' })
+  assert(r3.status === 200 && r3.body.url === 'https://checkout.stripe.test/c/cs_new', JSON.stringify(r3.body))
+  const expired = other.calls.filter(c => c.path.endsWith('/expire')).map(c => c.path)
+  assert(expired.length === 1 && expired[0].includes('cs_old'), `expired: ${expired}`)
+})
+
+await step('D3 a second Stripe subscription never re-points the live row (logged as conflict for the admin)', async () => {
+  const before = await one(`SELECT plan_id, stripe_subscription_id, status FROM subscriptions WHERE party_id = '${S3}' AND status <> 'cancelled'`)
+  const r = await send(event('invoice.paid', invoice({ customer: 'cus_new_S3', subscription: 'sub_other_S3',
+    subscription_details: { metadata: { app: 'delivr', plan: 'premium', store_id: S3 } },
+    lines: { data: [{ price: { id: 'price_test_premium' }, period: { end: now() + 86400 } }] } }), 'evt_conflict'))
+  assert(r.status === 200 && r.body.result?.conflict === true, JSON.stringify(r.body))
+  const after = await one(`SELECT plan_id, stripe_subscription_id, status FROM subscriptions WHERE party_id = '${S3}' AND status <> 'cancelled'`)
+  assert(JSON.stringify(after) === JSON.stringify(before), 'live row changed')
+  const log = await one(`SELECT result FROM stripe_webhook_events WHERE id = 'evt_conflict'`)
+  assert(log?.result?.incoming_subscription === 'sub_other_S3', 'conflict not logged')
+})
+
+await step('D1 unpaid checkout only links the customer; the plan switches on async_payment_succeeded (manual row kept until then)', async () => {
+  const before = await one(`SELECT s.status, p.name, s.stripe_subscription_id FROM subscriptions s JOIN subscription_plans p ON p.id = s.plan_id
+                             WHERE party_id = '${S2}' AND status <> 'cancelled'`)
+  const sess = checkoutDone({ id: 'cs_unpaid', payment_status: 'unpaid', metadata: { app: 'delivr', plan: 'premium', store_id: S2 },
+                              client_reference_id: S2, customer: 'cus_S2', subscription: 'sub_S2' })
+  const r = await send(event('checkout.session.completed', sess))
+  assert(r.status === 200 && r.body.result?.linked === true, JSON.stringify(r.body))
+  const mid = await one(`SELECT s.status, p.name, s.stripe_subscription_id FROM subscriptions s JOIN subscription_plans p ON p.id = s.plan_id
+                          WHERE party_id = '${S2}' AND status <> 'cancelled'`)
+  assert(JSON.stringify(mid) === JSON.stringify(before) && before.name === 'Pro', `manual row changed: ${JSON.stringify(mid)}`)
+  assert((await testDb.customerFor(S2)) === 'cus_S2', 'customer not linked')
+  const fail = await send(event('invoice.payment_failed', invoice({ customer: 'cus_S2', subscription: 'sub_S2',
+    subscription_details: { metadata: { app: 'delivr', plan: 'premium', store_id: S2 } } })))
+  assert(fail.body.result?.ignored === 'no_subscription', `failed payment touched the bank-transfer row: ${JSON.stringify(fail.body)}`)
+  const ok = await send(event('checkout.session.async_payment_succeeded', { ...sess, payment_status: 'paid' }))
+  assert(ok.status === 200 && ok.body.result?.ok, JSON.stringify(ok.body))
+  const after = await one(`SELECT s.status, p.name, s.stripe_subscription_id FROM subscriptions s JOIN subscription_plans p ON p.id = s.plan_id
+                            WHERE party_id = '${S2}' AND status <> 'cancelled'`)
+  assert(after.name === 'Premium' && after.status === 'active' && after.stripe_subscription_id === 'sub_S2', JSON.stringify(after))
+})
+
+await step('D4 unknown Stripe price is not our plan; portal uses STRIPE_PORTAL_CONFIGURATION_ID when set', async () => {
+  const r = await send(event('customer.subscription.updated', subscription({ id: 'sub_S2', customer: 'cus_S2',
+    metadata: { app: 'delivr', plan: 'premium', store_id: S2 }, items: { data: [{ price: { id: 'price_someone_else' } }] } })))
+  assert(r.body.ignored === 'unknown_price', JSON.stringify(r.body))
+  const inv = await send(event('invoice.paid', invoice({ customer: 'cus_S2', subscription: 'sub_S2',
+    subscription_details: { metadata: { app: 'delivr', plan: 'premium', store_id: S2 } },
+    lines: { data: [{ price: { id: 'price_someone_else' } }] } })))
+  assert(inv.body.ignored === 'unknown_price', JSON.stringify(inv.body))
+  const withPortal = readConfig(k => (k === 'STRIPE_PORTAL_CONFIGURATION_ID' ? 'bpc_test_delivr' : ENV[k]))
+  const { stripe, calls } = mockStripe(PRICES)
+  await startPortal({ cfg: withPortal, stripe, db: testDb, user: { id: OWNER }, storeId: S3 })
+  assert(calls.find(c => c.path === '/v1/billing_portal/sessions').params.get('configuration') === 'bpc_test_delivr', 'configuration')
+  const { stripe: s2, calls: c2 } = mockStripe(PRICES)
+  await startPortal({ cfg, stripe: s2, db: testDb, user: { id: OWNER }, storeId: S3 })
+  assert(c2.find(c => c.path === '/v1/billing_portal/sessions').params.get('configuration') === null, 'no configuration by default')
+})
+
+await step('D6 a customer already linked to another store never raises (no endless retries)', async () => {
+  const r = await send(event('checkout.session.completed', checkoutDone({ id: 'cs_x', payment_status: 'unpaid',
+    metadata: { app: 'delivr', plan: 'pro', store_id: S1 }, client_reference_id: S1, customer: 'cus_new_S3', subscription: 'sub_x2' })))
+  assert(r.status === 200 && r.body.result?.ok, JSON.stringify(r.body))
+  assert((await testDb.customerFor(S1)) === 'cus_test_S1', 'S1 customer overwritten')
+})
+
+await step('D7 invoice events without a subscription id are ignored', async () => {
+  const r1 = await send(event('invoice.paid', invoice({ subscription: null })))
+  assert(r1.body.ignored === 'no_subscription', JSON.stringify(r1.body))
+  const r2 = await send(event('invoice.payment_failed', invoice({ subscription: null })))
+  assert(r2.body.ignored === 'no_subscription', JSON.stringify(r2.body))
 })
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} stripe-billing: ${passed}/${passed + failed}`)

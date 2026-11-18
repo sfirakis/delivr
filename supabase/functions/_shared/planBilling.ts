@@ -27,6 +27,8 @@ export interface BillingConfig {
   taxRateId: string | null
   automaticTax: boolean
   prices: Record<PlanKey, string | null>
+  /** Optional Stripe customer-portal configuration (bpc_…); default portal otherwise. */
+  portalConfigurationId: string | null
   /** Online payment can start: key + webhook + VAT + at least one price. */
   configured: boolean
   /** Plans whose button may open Checkout. */
@@ -56,7 +58,8 @@ export function readConfig(env: Env): BillingConfig {
 
   const base = !!secretKey && !!webhookSecret && (!!taxRateId || automaticTax)
   const payablePlans = base ? PLAN_KEYS.filter(k => !!prices[k]) : []
-  return { secretKey, webhookSecret, taxRateId, automaticTax, prices, configured: payablePlans.length > 0, payablePlans, missing }
+  const portalConfigurationId = clean(env('STRIPE_PORTAL_CONFIGURATION_ID'))
+  return { secretKey, webhookSecret, taxRateId, automaticTax, prices, portalConfigurationId, configured: payablePlans.length > 0, payablePlans, missing }
 }
 
 export function planKeyFromName(name: string | null | undefined): PlanKey | null {
@@ -114,7 +117,8 @@ export type DbStatus = 'trial' | 'active' | 'past_due' | 'paused' | 'cancelled'
 export interface ApplyArgs {
   event_id: string
   event_type: string
-  action: 'activate' | 'past_due' | 'cancel'
+  /** link = only remember customer/subscription ids (unpaid checkout), no plan/status change */
+  action: 'activate' | 'past_due' | 'cancel' | 'link'
   store_id: string | null
   plan_key: PlanKey | null
   status: DbStatus | null
@@ -176,14 +180,19 @@ export function decide(event: Obj, cfg: BillingConfig): Decision {
   const ours = (m: Meta) => m?.app === STRIPE_APP
 
   switch (type) {
-    case 'checkout.session.completed': {
+    case 'checkout.session.completed':
+    case 'checkout.session.async_payment_succeeded': {
       if (!ours(o.metadata)) return { ignore: 'not_delivr' }
       if (o.mode !== 'subscription' || !o.subscription) return { ignore: 'not_a_subscription' }
-      const status: DbStatus = o.payment_status === 'no_payment_required' ? 'trial'
-        : o.payment_status === 'paid' ? 'active' : 'past_due'
-      return { apply: { ...base, action: 'activate', store_id: uuidOrNull(o.metadata.store_id) ?? uuidOrNull(o.client_reference_id),
-        plan_key: planKeyFromName(o.metadata.plan), status, customer: idOf(o.customer),
-        subscription: idOf(o.subscription), price: null, period_end: null } }
+      const store_id = uuidOrNull(o.metadata.store_id) ?? uuidOrNull(o.client_reference_id)
+      const ids = { customer: idOf(o.customer), subscription: idOf(o.subscription), price: null, period_end: null }
+      if (o.payment_status !== 'paid' && o.payment_status !== 'no_payment_required') {
+        // Not paid yet (delayed payment method): remember the ids only; the plan
+        // switches on invoice.paid / checkout.session.async_payment_succeeded.
+        return { apply: { ...base, action: 'link', store_id, plan_key: null, status: null, ...ids } }
+      }
+      return { apply: { ...base, action: 'activate', store_id, plan_key: planKeyFromName(o.metadata.plan),
+        status: o.payment_status === 'no_payment_required' ? 'trial' : 'active', ...ids } }
     }
     case 'customer.subscription.created':
     case 'customer.subscription.updated':
@@ -192,8 +201,10 @@ export function decide(event: Obj, cfg: BillingConfig): Decision {
       const status = type === 'customer.subscription.deleted' ? 'cancelled' : mapStripeStatus(o.status)
       if (!status) return { ignore: `status_${o.status}` }
       const price = subscriptionPrice(o)
-      // A plan changed in the portal changes the Price; metadata.plan stays old.
-      const plan = planKeyForPrice(cfg, price) ?? planKeyFromName(o.metadata.plan)
+      // A plan changed in the portal changes the Price; metadata.plan stays old,
+      // so the Price decides. A Price that is not one of ours is not our plan.
+      const plan = price ? planKeyForPrice(cfg, price) : null
+      if (price && !plan && status !== 'cancelled') return { ignore: 'unknown_price' }
       return { apply: { ...base, action: status === 'cancelled' ? 'cancel' : status === 'past_due' ? 'past_due' : 'activate',
         store_id: uuidOrNull(o.metadata.store_id), plan_key: plan, status, customer: idOf(o.customer),
         subscription: o.id ?? null, price, period_end: subscriptionPeriodEnd(o) } }
@@ -204,20 +215,23 @@ export function decide(event: Obj, cfg: BillingConfig): Decision {
       if (!ours(m)) return { ignore: 'not_delivr' }
       // €0 trial invoice: nothing paid, the trial status comes from the subscription.
       if (!(Number(o.amount_paid) > 0)) return { ignore: 'zero_amount' }
+      const subscription = idOf(o.subscription) ?? idOf(o?.parent?.subscription_details?.subscription)
+      if (!subscription) return { ignore: 'no_subscription' }
       const line = o?.lines?.data?.[0]
+      const linePrice = idOf(line?.price) ?? idOf(line?.pricing?.price_details?.price)
+      const plan = linePrice ? planKeyForPrice(cfg, linePrice) : planKeyFromName(m?.plan)
+      if (linePrice && !plan) return { ignore: 'unknown_price' }
       return { apply: { ...base, action: 'activate', store_id: uuidOrNull(m?.store_id),
-        plan_key: planKeyForPrice(cfg, idOf(line?.price) ?? idOf(line?.pricing?.price_details?.price)) ?? planKeyFromName(m?.plan),
-        status: 'active', customer: idOf(o.customer),
-        subscription: idOf(o.subscription) ?? idOf(o?.parent?.subscription_details?.subscription),
-        price: null, period_end: isoFromUnix(line?.period?.end) } }
+        plan_key: plan, status: 'active', customer: idOf(o.customer), subscription,
+        price: linePrice, period_end: isoFromUnix(line?.period?.end) } }
     }
     case 'invoice.payment_failed': {
       const m = invoiceMeta(o)
       if (!ours(m)) return { ignore: 'not_delivr' }
+      const subscription = idOf(o.subscription) ?? idOf(o?.parent?.subscription_details?.subscription)
+      if (!subscription) return { ignore: 'no_subscription' }
       return { apply: { ...base, action: 'past_due', store_id: uuidOrNull(m?.store_id), plan_key: null,
-        status: 'past_due', customer: idOf(o.customer),
-        subscription: idOf(o.subscription) ?? idOf(o?.parent?.subscription_details?.subscription),
-        price: null, period_end: null } }
+        status: 'past_due', customer: idOf(o.customer), subscription, price: null, period_end: null } }
     }
     default:
       return { ignore: 'event_type' }
@@ -258,7 +272,8 @@ export async function handleStripeWebhook(opts: {
 }
 
 // ── Stripe REST (form-encoded) ──────────────────────────────────────────
-export type StripeCall = (method: 'GET' | 'POST', path: string, params?: Record<string, unknown>) => Promise<Obj>
+export type StripeCall = (method: 'GET' | 'POST', path: string, params?: Record<string, unknown>,
+                          opts?: { idempotencyKey?: string }) => Promise<Obj>
 
 /** Stripe's bracket form encoding: a[b][0][c]=v */
 export function formEncode(params: Record<string, unknown>): string {
@@ -278,7 +293,7 @@ export function formEncode(params: Record<string, unknown>): string {
 }
 
 export function stripeCaller(fetchImpl: typeof fetch, secretKey: string): StripeCall {
-  return async (method, path, params) => {
+  return async (method, path, params, opts) => {
     const body = params ? formEncode(params) : ''
     const url = `https://api.stripe.com${path}${method === 'GET' && body ? `?${body}` : ''}`
     const res = await fetchImpl(url, {
@@ -287,6 +302,7 @@ export function stripeCaller(fetchImpl: typeof fetch, secretKey: string): Stripe
         Authorization: `Bearer ${secretKey}`,
         'Content-Type': 'application/x-www-form-urlencoded',
         'Stripe-Version': '2024-06-20',
+        ...(opts?.idempotencyKey ? { 'Idempotency-Key': opts.idempotencyKey } : {}),
       },
       body: method === 'POST' ? body : undefined,
     })
@@ -306,7 +322,8 @@ export interface BillingDb {
   storeName(storeId: string): Promise<string | null>
   plan(planKey: PlanKey): Promise<StorePlanRow | null>
   customerFor(storeId: string): Promise<string | null>
-  saveCustomer(storeId: string, customerId: string): Promise<void>
+  /** keeps the first customer saved for the store; returns the one that is stored */
+  saveCustomer(storeId: string, customerId: string): Promise<string>
   /** live Stripe-managed subscription of the store, if any */
   liveStripeSubscription(storeId: string): Promise<{ plan_name: string; status: string } | null>
   hadStripeSubscription(storeId: string): Promise<boolean>
@@ -337,18 +354,40 @@ export async function startCheckout(opts: {
   const okPrice = price?.active !== false && price?.unit_amount === expectCents
     && String(price?.currency).toLowerCase() === 'eur'
     && price?.recurring?.interval === (plan.billing_cycle === 'year' ? 'year' : 'month')
-    && price?.tax_behavior !== 'inclusive'
+    && (cfg.automaticTax ? price?.tax_behavior === 'exclusive' : price?.tax_behavior !== 'inclusive')
   if (!okPrice) return { status: 503, body: { error: 'price_mismatch', code: 'billing_unavailable' } }
+
+  // «+ ΦΠΑ»: VAT must really be added on top — a 24 % exclusive, active Tax Rate.
+  if (!cfg.automaticTax) {
+    const tr = await stripe('GET', `/v1/tax_rates/${encodeURIComponent(cfg.taxRateId ?? '')}`)
+    if (tr?.active !== true || tr?.inclusive !== false || Number(tr?.percentage) !== 24) {
+      return { status: 503, body: { error: 'tax_rate_mismatch', code: 'billing_unavailable' } }
+    }
+  }
 
   let customer = await db.customerFor(storeId)
   if (!customer) {
+    // Same key for 24 h → two clicks / two tabs get the same Stripe customer.
     const c = await stripe('POST', '/v1/customers', {
       email: user.email ?? undefined,
       name: (await db.storeName(storeId)) ?? undefined,
       metadata: { app: STRIPE_APP, store_id: storeId },
-    })
-    customer = String(c.id)
-    await db.saveCustomer(storeId, customer)
+    }, { idempotencyKey: `delivr-customer-${storeId}` })
+    customer = await db.saveCustomer(storeId, String(c.id))
+  }
+
+  // Stripe is the truth for «already paying»: the webhook may not have arrived yet.
+  const subs = await stripe('GET', '/v1/subscriptions', { customer, status: 'all', limit: 20 })
+  const LIVE = ['active', 'trialing', 'past_due', 'incomplete', 'unpaid', 'paused']
+  if ((subs?.data ?? []).some((x: Obj) => LIVE.includes(x?.status))) {
+    return { status: 409, body: { error: 'already_subscribed', code: 'already_subscribed' } }
+  }
+  // An open Checkout for the same plan is reused; one for another plan is closed first.
+  const open = await stripe('GET', '/v1/checkout/sessions', { customer, status: 'open', limit: 10 })
+  for (const cs of (open?.data ?? []) as Obj[]) {
+    if (cs?.metadata?.app !== STRIPE_APP) continue
+    if (cs?.metadata?.plan === planKey && cs?.url) return { status: 200, body: { url: cs.url, reused: true } }
+    await stripe('POST', `/v1/checkout/sessions/${encodeURIComponent(String(cs.id))}/expire`)
   }
 
   const meta = { app: STRIPE_APP, plan: planKey, store_id: storeId }
@@ -389,6 +428,9 @@ export async function startPortal(opts: {
   const customer = await db.customerFor(storeId)
   if (!customer) return { status: 404, body: { error: 'no_customer', code: 'no_customer' } }
   const appUrl = (await db.appUrl()).replace(/\/+$/, '')
-  const s = await stripe('POST', '/v1/billing_portal/sessions', { customer, return_url: `${appUrl}/merchant`, locale: 'el' })
+  const s = await stripe('POST', '/v1/billing_portal/sessions', {
+    customer, return_url: `${appUrl}/merchant`, locale: 'el',
+    configuration: cfg.portalConfigurationId ?? undefined,
+  })
   return { status: 200, body: { url: s.url } }
 }

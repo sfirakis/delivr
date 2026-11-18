@@ -55,8 +55,12 @@ CREATE POLICY stripe_webhook_events_admin ON stripe_webhook_events FOR SELECT TO
 REVOKE INSERT, UPDATE, DELETE ON stripe_webhook_events FROM anon, authenticated;
 
 -- ── 4. The one writer: a verified Stripe event → subscription row ──
--- p_action: activate | past_due | cancel. Unknown store → {ignored} (200,
--- never an error: the Stripe account is shared). Same event twice → {duplicate}.
+-- p_action: activate | past_due | cancel | link. Unknown store → {ignored}
+-- (200, never an error: the Stripe account is shared). Same event twice →
+-- {duplicate}. «link» (checkout completed but not paid yet) only remembers
+-- the Stripe customer; the plan changes when the payment arrives.
+-- A store's live row is never re-pointed to a DIFFERENT Stripe subscription:
+-- that is logged ({conflict}) in stripe_webhook_events for the admin.
 CREATE OR REPLACE FUNCTION delivr_stripe_apply(
   p_event_id     TEXT,
   p_event_type   TEXT,
@@ -76,7 +80,7 @@ DECLARE
   v_status TEXT;
   v_res    JSONB;
 BEGIN
-  IF p_action NOT IN ('activate', 'past_due', 'cancel') THEN
+  IF p_action NOT IN ('activate', 'past_due', 'cancel', 'link') THEN
     RAISE EXCEPTION 'BAD_ACTION' USING ERRCODE = '22023';
   END IF;
   IF p_status IS NOT NULL AND p_status NOT IN ('trial', 'active', 'past_due', 'paused', 'cancelled') THEN
@@ -111,9 +115,11 @@ BEGIN
   END IF;
 
   IF p_customer IS NOT NULL THEN
+    -- No conflict target: a customer already linked to another store (or a
+    -- store that already has one) must not raise → no endless Stripe retries.
     INSERT INTO store_billing_accounts (store_id, stripe_customer_id)
     VALUES (v_store, p_customer)
-    ON CONFLICT (store_id) DO NOTHING;
+    ON CONFLICT DO NOTHING;
   END IF;
 
   -- The row to act on: this Stripe subscription, else the store's live row.
@@ -123,7 +129,10 @@ BEGIN
      ORDER BY created_at DESC LIMIT 1;
   END IF;
 
-  IF p_action = 'cancel' THEN
+  IF p_action = 'link' THEN
+    v_res := jsonb_build_object('ok', true, 'store_id', v_store, 'linked', true);
+
+  ELSIF p_action = 'cancel' THEN
     IF v_sub.id IS NOT NULL AND (p_subscription IS NULL OR v_sub.stripe_subscription_id = p_subscription) THEN
       UPDATE subscriptions SET status = 'cancelled', cancelled_at = coalesce(cancelled_at, now()),
              cancel_reason = coalesce(cancel_reason, 'Stripe: ακύρωση συνδρομής'),
@@ -135,10 +144,10 @@ BEGIN
     END IF;
 
   ELSIF p_action = 'past_due' THEN
+    -- Only the row of THIS Stripe subscription (never a bank-transfer row).
     IF v_sub.id IS NOT NULL AND v_sub.status <> 'cancelled'
-       AND (p_subscription IS NULL OR v_sub.stripe_subscription_id IS NULL OR v_sub.stripe_subscription_id = p_subscription) THEN
-      UPDATE subscriptions SET status = 'past_due',
-             stripe_subscription_id = coalesce(stripe_subscription_id, p_subscription), updated_at = now()
+       AND v_sub.stripe_subscription_id IS NOT NULL AND v_sub.stripe_subscription_id = p_subscription THEN
+      UPDATE subscriptions SET status = 'past_due', updated_at = now()
        WHERE id = v_sub.id;
       v_res := jsonb_build_object('ok', true, 'store_id', v_store, 'subscription_id', v_sub.id, 'status', 'past_due');
     ELSE
@@ -150,6 +159,12 @@ BEGIN
     IF v_sub.id IS NOT NULL AND v_sub.status = 'cancelled' THEN
       -- An event for a subscription that is already over (late/out of order).
       v_res := jsonb_build_object('ignored', 'subscription_cancelled', 'store_id', v_store);
+    ELSIF v_sub.id IS NOT NULL AND v_sub.stripe_subscription_id IS NOT NULL
+          AND p_subscription IS NOT NULL AND v_sub.stripe_subscription_id <> p_subscription THEN
+      -- The store already pays another Stripe subscription: do not re-point
+      -- the row; the admin sees it (and refunds/cancels one) from the log.
+      v_res := jsonb_build_object('ignored', 'other_live_subscription', 'conflict', true, 'store_id', v_store,
+                                  'live_subscription', v_sub.stripe_subscription_id, 'incoming_subscription', p_subscription);
     ELSIF v_sub.id IS NOT NULL THEN
       UPDATE subscriptions SET
         plan_id       = coalesce(v_plan.id, plan_id),

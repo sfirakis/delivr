@@ -8,7 +8,8 @@
 // Secrets (Supabase → Edge Functions → Secrets): STRIPE_SECRET_KEY,
 // STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_PRO, STRIPE_PRICE_PLUS,
 // STRIPE_PRICE_PREMIUM, and STRIPE_TAX_RATE_ID (24 % exclusive) or
-// STRIPE_AUTOMATIC_TAX=true. The logic lives in ../_shared/planBilling.ts.
+// STRIPE_AUTOMATIC_TAX=true. Optional: STRIPE_PORTAL_CONFIGURATION_ID (bpc_…).
+// The logic lives in ../_shared/planBilling.ts.
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -72,9 +73,14 @@ serve(async (req) => {
       return data?.stripe_customer_id ?? null
     },
     async saveCustomer(storeId, customerId) {
+      // First one wins (two tabs at once): never overwrite, return what is stored.
       const { error } = await admin.from('store_billing_accounts')
-        .upsert({ store_id: storeId, stripe_customer_id: customerId }, { onConflict: 'store_id' })
+        .upsert({ store_id: storeId, stripe_customer_id: customerId }, { onConflict: 'store_id', ignoreDuplicates: true })
       if (error) throw new Error(error.message)
+      const { data } = await admin.from('store_billing_accounts').select('stripe_customer_id')
+        .eq('store_id', storeId).maybeSingle()
+      if (!data?.stripe_customer_id) throw new Error('customer_not_saved')
+      return data.stripe_customer_id as string
     },
     async liveStripeSubscription(storeId) {
       const { data } = await admin.from('subscriptions')

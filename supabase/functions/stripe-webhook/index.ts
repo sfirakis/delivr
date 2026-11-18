@@ -2,8 +2,9 @@
 // Stripe → store plan (019). Deploy WITHOUT JWT verification (Stripe signs
 // the request instead):  supabase functions deploy stripe-webhook --no-verify-jwt
 // Endpoint: https://<project-ref>.supabase.co/functions/v1/stripe-webhook
-// Events: checkout.session.completed, customer.subscription.updated,
-//         customer.subscription.deleted, invoice.paid, invoice.payment_failed
+// Events: checkout.session.completed, checkout.session.async_payment_succeeded,
+//         customer.subscription.updated, customer.subscription.deleted,
+//         invoice.paid, invoice.payment_failed
 // Secrets: STRIPE_WEBHOOK_SECRET (+ STRIPE_SECRET_KEY, STRIPE_PRICE_* for the
 // price → plan mapping). The logic lives in ../_shared/planBilling.ts.
 
