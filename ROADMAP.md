@@ -19,6 +19,20 @@
 
 ## 🎯 Τώρα — Open marketplace (2026-10-30)
 
+- 🔄 **Πληρωμή πακέτων με κάρτα (18/11/2026, `feat/plan-billing`, PR ανοιχτό):**
+  Stripe Checkout σε subscription mode ανά πακέτο (Pro/Plus/Premium,
+  `STRIPE_PRICE_*`, τιμή + ΦΠΑ 24% exclusive), `stripe-webhook` (υπογραφή,
+  paid / failed / updated / deleted, αγνοεί ό,τι δεν έχει `app=delivr` —
+  κοινός λογαριασμός), customer portal για ακύρωση, metadata για
+  CentralBilling (`app=delivr`, `plan`, `store_id` σε session + subscription).
+  Migration `019_stripe_plan_billing.sql` (μόνο προσθήκες· ο μηνιαίος
+  λογαριασμός του admin και η αυτόματη αλλαγή πακέτου αφήνουν τις συνδρομές
+  Stripe). Merchant → Ρυθμίσεις → «Πακέτο & πληρωμή»: «Κάρτα: σύντομα» μέχρι
+  να μπουν τα κλειδιά. DB 19/19 (υπογεγραμμένα events), e2e 73/73.
+  ⬜ Για live: κλειδιά/Prices/Tax Rate στο Stripe + secrets στο Supabase,
+  019 στη βάση, deploy `plan-billing` + `stripe-webhook --no-verify-jwt`,
+  webhook endpoint στο Stripe, Customer Portal με ακύρωση.
+
 - ✅ **Ειλικρίνεια 18/11/2026 (fix/qr-demo-label):** τα 5 καταστήματα + 3
   καταλύματα του seed (24/08) δεν είναι πραγματικά. `src/lib/demo.ts` (λίστα
   slugs/κωδικών) → banner «Demo» EL+EN στο `/qr/<κωδικός>`, στη σελίδα

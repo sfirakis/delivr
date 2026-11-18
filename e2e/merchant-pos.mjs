@@ -83,6 +83,8 @@ const page = await ctx.newPage()
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()) })
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message))
 
+let billingOn = false
+const billingCalls = []
 const json = (route, body, status = 200) => route.fulfill({
   status, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(body),
 })
@@ -107,6 +109,19 @@ await page.route('**/*.supabase.co/**', async route => {
     if (a === 'accept') order.prep_minutes = body.p_prep_minutes
     return json(route, { ok: true, status: order.status, prep_minutes: order.prep_minutes })
   }
+  if (url.includes('/functions/v1/plan-billing')) {
+    const body = JSON.parse(req.postData() || '{}')
+    billingCalls.push(body)
+    if (!billingOn) return json(route, { error: 'not found' }, 404)      // function not deployed yet
+    if (body.action === 'checkout') return json(route, { url: 'https://checkout.stripe.test/c/cs_1' })
+    return json(route, { configured: true, plans: ['pro', 'plus', 'premium'], stripe: null })
+  }
+  if (url.includes('/rpc/delivr_public_plans')) return json(route, { default: { auto_approve: false }, custom_above: 500, plans: [
+    { id: 'p1', name: 'Basic', description: null, price: 0, billing_cycle: 'month', trial_days: 0, included_orders: 15, features: [] },
+    { id: 'p2', name: 'Pro', description: null, price: 39, billing_cycle: 'month', trial_days: 14, included_orders: 100, features: [] },
+    { id: 'p3', name: 'Plus', description: null, price: 79, billing_cycle: 'month', trial_days: 14, included_orders: 250, features: [] },
+    { id: 'p4', name: 'Premium', description: null, price: 150, billing_cycle: 'month', trial_days: 14, included_orders: 500, features: [] },
+  ] })
   if (url.includes('/rpc/delivr_store_plan_usage')) return json(route, usageNow)
   if (url.includes('/rpc/delivr_store_order')) {
     return json(route, {
@@ -224,6 +239,32 @@ await step('No direct writes on orders and no token RPC from the POS', async () 
   const bad = writes.filter(w => w.url.includes('/orders') || w.url.includes('/order_events'))
   if (bad.length) throw new Error('direct writes: ' + JSON.stringify(bad))
   if (calls.some(c => c.fn === 'delivr_store_action')) throw new Error('POS still uses delivr_store_action')
+})
+
+await step('Πακέτο & πληρωμή: without Stripe keys every paid plan says «σύντομα», nothing payable', async () => {
+  await page.getByRole('button', { name: /Ρυθμίσεις/ }).click()
+  await page.getByTestId('plan-billing').waitFor()
+  await page.waitForTimeout(800)
+  const soon = page.getByTestId('plan-pay-soon')
+  if (await soon.count() !== 3) throw new Error(`${await soon.count()} «σύντομα» buttons`)
+  if (!(await soon.first().isDisabled())) throw new Error('«σύντομα» button is clickable')
+  if (await page.getByTestId('plan-pay').count() !== 0) throw new Error('a pay button is offered')
+  const t = await page.getByTestId('plan-billing').innerText()
+  for (const re of [/39,00\s€\/μήνα \+ ΦΠΑ/, /79,00\s€\/μήνα \+ ΦΠΑ/, /150,00\s€\/μήνα \+ ΦΠΑ/, /έρχεται σύντομα/])
+    if (!re.test(t)) throw new Error(`missing ${re}`)
+})
+
+await step('With Stripe configured: «Πληρωμή με κάρτα» opens Stripe Checkout for that plan', async () => {
+  billingOn = true
+  await page.route('https://checkout.stripe.test/**', r => r.fulfill({ status: 200, contentType: 'text/html', body: '<h1>Stripe Checkout (mock)</h1>' }))
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.getByRole('button', { name: /Ρυθμίσεις/ }).click()
+  await page.getByTestId('plan-pay').first().waitFor()
+  if (await page.getByTestId('plan-pay').count() !== 3) throw new Error('pay buttons missing')
+  await page.getByTestId('plan-pay').nth(1).click()
+  await page.waitForURL('https://checkout.stripe.test/**', { timeout: 8000 })
+  const c = billingCalls.find(b => b.action === 'checkout')
+  if (!c || c.plan !== 'plus' || c.store_id !== STORE_ID) throw new Error(JSON.stringify(c))
 })
 
 await step('No console errors', async () => {

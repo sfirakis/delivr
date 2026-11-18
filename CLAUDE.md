@@ -46,7 +46,10 @@ npm run build                  # production build (πρέπει πάντα πρ�
   `delivr_merchant_set_order_status` (POS, migration 016).
 - `profiles.role`/`loyalty_points` αλλάζουν ΜΟΝΟ από service role (011a).
 - Το όριο παραγγελιών του πακέτου ΔΕΝ μπλοκάρει ποτέ παραγγελία· η αλλαγή
-  πακέτου γίνεται μόνο από `delivr_apply_plan_upgrades()` (018).
+  πακέτου γίνεται μόνο από `delivr_apply_plan_upgrades()` (018) — ή, για
+  συνδρομή με κάρτα, μόνο από το Stripe μέσω `stripe-webhook` →
+  `delivr_stripe_apply()` (019). Metadata `app=delivr` (+plan, store_id) σε
+  session ΚΑΙ subscription· ΠΟΤΕ `app` σε παραγγελίες πελατών.
 - Νέες SQL functions: πάντα `REVOKE EXECUTE ... FROM PUBLIC, anon` (το μάθημα
   των migrations 009/010 που ξανάνοιξαν ό,τι έκλεισε η 008).
 - Τηλέφωνα σε E.164 πριν από wa.me/tel.

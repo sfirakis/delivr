@@ -67,3 +67,11 @@ verify_jwt = false
 
 [analytics]
 enabled = false
+
+# 019 — store plans paid by card. The webhook is signed by Stripe, not a JWT.
+[functions.stripe-webhook]
+verify_jwt = false
+
+# config works with the anon key (/join); checkout/portal check the user inside.
+[functions.plan-billing]
+verify_jwt = true

@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { getPublicPlans, registerStore, ApiError, type StoreSignup, type PublicPlan } from '@/lib/api'
+import { getBillingConfig } from '@/lib/planBilling'
 import { money, num } from '@/lib/format'
 import { useDocumentTitle } from '@/lib/useDocumentTitle'
 import { useAuthStore } from '@/store/authStore'
@@ -106,6 +107,9 @@ export default function JoinPage() {
   useDocumentTitle('Γίνε συνεργάτης')
 
   const plansQ = useQuery({ queryKey: ['public-plans'], queryFn: getPublicPlans })
+  // Card payment of the plan (019): «σύντομα» until the Stripe keys exist.
+  const billingQ = useQuery({ queryKey: ['plan-billing-config'], queryFn: getBillingConfig, retry: false })
+  const cardOn = billingQ.data?.configured === true
   const draft = loadDraft()
   const [shop, setShop] = useState<StoreSignup>(draft?.shop ?? emptyShop)
   const [planId, setPlanId] = useState<string | null>(draft?.planId ?? null)
@@ -252,13 +256,17 @@ export default function JoinPage() {
                   {[p.trial_days > 0 ? `${p.trial_days} μέρες δωρεάν δοκιμή` : null,
                     p.description].filter(Boolean).join(' · ')}
                 </p>
-                {num(p.price) > 0 && (
+                {num(p.price) > 0 && (cardOn ? (
+                  <p className="text-[11px] font-semibold text-success mt-1" data-testid="plan-pay-card">
+                    💳 Πληρωμή με κάρτα από τον πίνακά σου, μετά την έγκριση
+                  </p>
+                ) : (
                   // Honest until Stripe is switched on (HQ 18/11/2026): no card
                   // payment is offered that cannot be taken yet.
                   <p className="text-[11px] font-semibold text-amber-800 mt-1" data-testid="plan-pay-soon">
                     💳 Πληρωμή online με κάρτα: σύντομα
                   </p>
-                )}
+                ))}
               </button>
             ))}
           </div>
@@ -277,7 +285,9 @@ export default function JoinPage() {
           )}
           <p className="text-[11px] text-ink-3 mt-2">
             Δεν χρεώνεται τίποτα τώρα. Το πακέτο ενεργοποιείται μαζί με το κατάστημα.
-            Η online πληρωμή της συνδρομής με κάρτα δεν είναι ακόμα ενεργή: έρχεται σύντομα.
+            {cardOn
+              ? 'Η συνδρομή πληρώνεται με κάρτα (Stripe) από τον πίνακα του καταστήματος και ακυρώνεται όποτε θέλεις.'
+              : 'Η online πληρωμή της συνδρομής με κάρτα δεν είναι ακόμα ενεργή: έρχεται σύντομα.'}
             Αν ξεπεράσεις το όριο, οι παραγγελίες δεν σταματούν: περνάς στο επόμενο πακέτο από τον επόμενο μήνα,
             και αν πέσουν, γυρνάς σε μικρότερο.
           </p>
