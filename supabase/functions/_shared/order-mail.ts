@@ -3,7 +3,7 @@
 // notify-order is called many times in parallel.
 //
 // Before sending, the caller atomically claims a per-channel column on the
-// order (migration 019):
+// order (migration 020):
 //   UPDATE orders SET <col> = now() WHERE id = $1 AND <col> IS NULL RETURNING id
 // Only the call that gets the row back sends. If the send fails the claim is
 // cleared, so a later call can try again. An admin resend forces the claim.

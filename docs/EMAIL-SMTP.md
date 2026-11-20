@@ -22,9 +22,9 @@ already holds.
 | `SMTP_SECURE` | optional; when empty it is `true` for port 465 |
 
 Use port **465 (TLS)**. Supabase Edge blocks outbound ports 25 and 587.
-**Order of steps:** 1) apply migration `supabase/migrations/019_order_email_claims.sql`
+**Order of steps:** 1) apply migration `supabase/migrations/020_order_email_claims.sql`
 (adds two nullable columns to `orders`); 2) set the secrets; 3) redeploy `notify-order` and
-`send-notification` with this code. Without migration 019, `notify-order` sends nothing (it
+`send-notification` with this code. Without migration 020, `notify-order` sends nothing (it
 fails closed and logs `failed` with the reason in `order_dispatch_log`).
 
 `RESEND_API_KEY` / `RESEND_FROM` can stay empty. If both SMTP and Resend are set, SMTP wins.

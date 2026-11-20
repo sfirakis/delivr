@@ -15,7 +15,7 @@
 // Idempotent: an email already logged as `sent` for this order is not sent
 // again (anyone holding the tracking link could otherwise replay the call).
 // Parallel calls are safe too: each channel is claimed atomically on the order
-// row (orders.store_email_claimed_at / guest_email_claimed_at, migration 019)
+// row (orders.store_email_claimed_at / guest_email_claimed_at, migration 020)
 // before sending, and the claim is cleared again if the send fails.
 // A platform admin (logged-in JWT, delivr_is_admin()) can force the store
 // email again from the admin "resend" button; the guest copy is never resent.

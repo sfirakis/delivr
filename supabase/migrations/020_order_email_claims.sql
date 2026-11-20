@@ -1,5 +1,5 @@
 -- ============================================================
--- 019 — per-channel email claims on orders
+-- 020 — per-channel email claims on orders
 --
 -- notify-order claims a channel atomically before it sends:
 --   UPDATE orders SET store_email_claimed_at = now()
