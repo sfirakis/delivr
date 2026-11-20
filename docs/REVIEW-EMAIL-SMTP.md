@@ -1,3 +1,5 @@
+> Note (20/11/2026): the claims migration called `019` below is now `020_order_email_claims.sql` (renamed in the rebase; `019` is Stripe plan billing).
+
 # Review: email via SMTP (commit ba64c21)
 
 Reviewer: independent (did not write the code). Date: 18/11/2026.

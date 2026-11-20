@@ -4,7 +4,10 @@
 // Channels:
 //   • Email (SMTP via the product mailbox, Resend only as fallback) with a
 //     one-tap confirmation link that needs no login
-//   • Copy to the platform support address and, optionally, the property owner
+//   • Hidden copy (Bcc) to the platform support address and, optionally, a
+//     visible copy to the property owner
+//   • Reply-To: the store's email replies to the customer, the customer's copy
+//     replies to the store (support address only as fallback)
 //   • Returns a ready-to-open wa.me link for the WhatsApp hand-off
 //
 // Every attempt is written to order_dispatch_log, so the admin dashboard can
@@ -22,7 +25,7 @@
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
-import { sendMail, mailProvider, noTransportReason } from '../_shared/mailer.ts'
+import { sendMail, mailProvider, noTransportReason, isSingleEmail } from '../_shared/mailer.ts'
 import { sentEmails, type DispatchRow } from '../_shared/guards.ts'
 import { sendClaimed, supabaseClaims, type ClaimedOutcome } from '../_shared/order-mail.ts'
 
@@ -278,6 +281,8 @@ Deno.serve(async (req: Request) => {
     // ── Email ────────────────────────────────────────────────
     const provider = mailProvider()
     const storeEmail = store.order_email || store.email
+    const supportEmail: string | undefined = settings?.support_email || undefined
+    const guestAddr = typeof order.guest_email === 'string' ? order.guest_email.trim() : ''
     const wantsEmail = (settings?.notify_store_email ?? true) && store.notify_email !== false
 
     if (provider === 'none') {
@@ -293,8 +298,11 @@ Deno.serve(async (req: Request) => {
                   provider, error: !storeEmail ? 'store has no email' : 'notifications disabled' })
     } else {
       const to = [storeEmail]
-      if (settings?.support_email) to.push(settings.support_email)
       if (settings?.notify_property_email && property?.contact_email) to.push(property.contact_email)
+      // The platform copy is hidden, so the store does not see our mailbox.
+      const bcc = supportEmail ? [supportEmail] : []
+      // "Reply" from the store goes to the customer when we have their email.
+      const storeReplyTo = isSingleEmail(guestAddr) ? guestAddr : supportEmail
 
       const html = buildEmailHtml(orderView, orderItems, confirmUrl, lang)
       const subject = T[lang].subject(order.order_number,
@@ -302,7 +310,7 @@ Deno.serve(async (req: Request) => {
 
       // Admin resend forces the claim; everyone else must win it.
       record('email', to.join(', '), await sendClaimed(claims, order_id, 'store_email_claimed_at',
-        { to, subject, html, replyTo: settings?.support_email ?? undefined }, sendMail, adminResend))
+        { to, bcc, subject, html, replyTo: storeReplyTo }, sendMail, adminResend))
     }
 
     // ── Guest confirmation copy ──────────────────────────────
@@ -323,7 +331,8 @@ Deno.serve(async (req: Request) => {
         to: [order.guest_email],
         subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
         html: guestHtml,
-        replyTo: settings?.support_email ?? undefined,
+        // "Reply" from the customer goes to the store.
+        replyTo: isSingleEmail(String(storeEmail ?? '').trim()) ? String(storeEmail).trim() : supportEmail,
       }, sendMail))
     }
 

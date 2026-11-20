@@ -1,7 +1,8 @@
 # Email: SMTP (delivr@actionweb.gr)
 
-The two Edge Functions that send email, `notify-order` (new order to the store, copy to
-support/owner, confirmation to the guest) and `send-notification` (order status to the
+The two Edge Functions that send email, `notify-order` (new order to the store, hidden
+Bcc copy to `platform_settings.support_email` = `delivr@actionweb.gr` since migration 021,
+optional copy to the owner, confirmation to the guest) and `send-notification` (order status to the
 customer), send through **SMTP from the product mailbox `delivr@actionweb.gr`**, as the
 HQ decided on 17/11/2026. Resend is only a fallback, used when SMTP is not set and
 `RESEND_API_KEY` is. Nobody needs to ask George for Resend keys.
@@ -66,7 +67,8 @@ The mailer lives in one place: `supabase/functions/_shared/mailer.ts` (checks in
    The tests run a fake SMTP server on `127.0.0.1`, and network access is limited to
    `127.0.0.1`. They cover provider choice, headers, a closed port, address lists being refused,
    the service-role check, escaping, the "already sent" check, and 5 parallel calls sending
-   exactly 1 store email and 1 guest copy (mock DB).
+   exactly 1 store email and 1 guest copy (mock DB), the platform copy going as Bcc, and a
+   recipient refused by the server being reported in `rejected` (and in the log `error`).
 2. **Live (after the secrets are set and the functions redeployed):** place one test
    order on a test store whose `order_email` is an internal mailbox, then check:
    - the email arrived and was not marked as spam (in Gmail, "Show original" should show
@@ -74,4 +76,5 @@ The mailer lives in one place: `supabase/functions/_shared/mailer.ts` (checks in
    - the newest `order_dispatch_log` rows show `provider = smtp`, `status = sent`;
    - if `failed`, the `error` column has the SMTP server reply (wrong password,
      blocked port, etc.).
-   Real messages to stores or customers need George's OK as usual.
+   Setting the `SMTP_*` secrets turns on automatic email to real stores and customers, so it
+   needs George's written OK first (see `docs/SMTP-DEPLOY.md`).

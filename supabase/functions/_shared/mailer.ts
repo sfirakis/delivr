@@ -13,12 +13,22 @@
 import nodemailer from 'npm:nodemailer@6.9.16'
 
 export type MailProvider = 'smtp' | 'resend' | 'none'
-export interface Mail { to: string[]; subject: string; html: string; replyTo?: string }
+export interface Mail {
+  to: string[]
+  /** Hidden copies (e.g. the platform mailbox): not shown to the other recipients. */
+  bcc?: string[]
+  subject: string
+  html: string
+  replyTo?: string
+}
 export interface MailResult {
   ok: boolean
   provider: MailProvider
   error?: string
-  /** Addresses that were refused because they are not exactly one valid address. */
+  /**
+   * Addresses that did not get the mail: refused locally (not exactly one
+   * valid address) or refused by the SMTP server while others were accepted.
+   */
   rejected?: string[]
 }
 
@@ -73,9 +83,14 @@ function smtpPort(): number {
 // ── Send ─────────────────────────────────────────────────────
 export async function sendMail(m: Mail): Promise<MailResult> {
   const provider = mailProvider()
-  const raw = m.to.map(v => (typeof v === 'string' ? v.trim() : v))
+  const clean = (list: unknown[] | undefined) => (list ?? []).map(v => (typeof v === 'string' ? v.trim() : v))
+  const raw = clean(m.to)
+  const rawBcc = clean(m.bcc)
   const to = raw.filter(isSingleEmail)
-  const rejected = raw.filter(v => !isSingleEmail(v)).map(v => oneLine(v, 120))
+  // A Bcc that repeats a visible recipient is dropped (one copy is enough).
+  const seen = new Set(to.map(a => a.toLowerCase()))
+  const bcc = rawBcc.filter(isSingleEmail).filter(a => !seen.has(a.toLowerCase()))
+  const rejected = [...raw, ...rawBcc].filter(v => !isSingleEmail(v)).map(v => oneLine(v, 120))
   const replyTo = m.replyTo && isSingleEmail(m.replyTo.trim()) ? m.replyTo.trim() : undefined
   const subject = oneLine(m.subject, 250)
   const base = rejected.length ? { rejected } : {}
@@ -94,17 +109,22 @@ export async function sendMail(m: Mail): Promise<MailResult> {
         auth: { user: env('SMTP_USER'), pass: env('SMTP_PASS') },
         connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 20_000,
       })
+      let info: { rejected?: unknown[] }
       try {
-        await transport.sendMail({
+        info = await transport.sendMail({
           from: env('SMTP_FROM') || `Delivr <${env('SMTP_USER')}>`,
           // Each element is one validated address; pass as an array so
           // nothing is re-parsed from a joined string.
-          to, subject, html: m.html, replyTo,
+          to, bcc: bcc.length ? bcc : undefined, subject, html: m.html, replyTo,
         })
       } finally {
         transport.close()
       }
-      return { ok: true, provider, ...base }
+      // The server may refuse some recipients and accept the rest: still a
+      // send, but the refused addresses are reported (and logged by callers).
+      const refused = (info?.rejected ?? []).map(v => oneLine(typeof v === 'string' ? v : (v as { address?: string })?.address ?? v, 120))
+      const all = [...rejected, ...refused]
+      return { ok: true, provider, ...(all.length ? { rejected: all } : {}) }
     }
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -112,7 +132,7 @@ export async function sendMail(m: Mail): Promise<MailResult> {
       headers: { Authorization: `Bearer ${env('RESEND_API_KEY')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from: env('RESEND_FROM') || env('SMTP_FROM') || 'Delivr <onboarding@resend.dev>',
-        to, subject, html: m.html, reply_to: replyTo,
+        to, bcc: bcc.length ? bcc : undefined, subject, html: m.html, reply_to: replyTo,
       }),
     })
     if (res.ok) return { ok: true, provider, ...base }

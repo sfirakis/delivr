@@ -19,7 +19,7 @@ function setEnv(o: Record<string, string>) {
 
 // ── Fake SMTP server: records RCPT TO lines and the DATA ─────
 interface Capture { rcpt: string[]; data: string }
-async function withFakeSmtp(port: number, fn: (cap: Capture) => Promise<void>) {
+async function withFakeSmtp(port: number, fn: (cap: Capture) => Promise<void>, refuse: string[] = []) {
   const cap: Capture = { rcpt: [], data: '' }
   const listener = Deno.listen({ hostname: '127.0.0.1', port })
   const conns: Deno.Conn[] = []
@@ -46,7 +46,10 @@ async function withFakeSmtp(port: number, fn: (cap: Capture) => Promise<void>) {
               const c = line.slice(0, 4).toUpperCase()
               if (c === 'EHLO') await w('250-fake\r\n250 AUTH PLAIN LOGIN')
               else if (c === 'AUTH') await w('235 ok')
-              else if (c === 'RCPT') { cap.rcpt.push(line); await w('250 ok') }
+              else if (c === 'RCPT') {
+                if (refuse.some(a => line.includes(a))) await w('550 no such user')
+                else { cap.rcpt.push(line); await w('250 ok') }
+              }
               else if (c === 'DATA') { inData = true; await w('354 go') }
               else if (c === 'QUIT') { await w('221 bye'); conn.close(); return }
               else await w('250 ok')
@@ -131,6 +134,30 @@ Deno.test('fix 1: bad entries dropped, good ones still sent; bad Reply-To droppe
     assert(!/^Bcc:/mi.test(cap.data) && /Subject: Hi Bcc: evil/.test(cap.data), 'subject on one line')
     assert(!/Reply-To:/i.test(cap.data), 'list Reply-To dropped')
   })
+})
+
+// ── REVIEW-SMTP-3: Bcc for the platform copy, server refusals logged ──
+Deno.test('bcc: platform copy is a hidden recipient, not in To', opts, async () => {
+  await withFakeSmtp(2534, async (cap) => {
+    setEnv(smtpEnv(2534))
+    const r = await sendMail({ to: ['store@test.invalid'], bcc: ['platform@test.invalid', 'STORE@test.invalid', 'bad, list@test.invalid'],
+                               subject: 's', html: 'h', replyTo: 'guest@test.invalid' })
+    assert(r.ok && r.rejected?.length === 1, JSON.stringify(r))
+    assert(cap.rcpt.length === 2 && cap.rcpt.some(l => /platform@test\.invalid/.test(l)), 'store + platform RCPT: ' + cap.rcpt.join(' / '))
+    assert(/^To: store@test\.invalid$/m.test(cap.data), 'To is the store only')
+    assert(!/platform@test\.invalid/.test(cap.data) && !/^Bcc:/mi.test(cap.data), 'platform address not visible in the message')
+    assert(/Reply-To: guest@test\.invalid/.test(cap.data), 'Reply-To the customer')
+  })
+})
+
+Deno.test('smtp: a recipient refused by the server is reported, others still get it', opts, async () => {
+  await withFakeSmtp(2535, async (cap) => {
+    setEnv(smtpEnv(2535))
+    const r = await sendMail({ to: ['store@test.invalid', 'owner@test.invalid'], subject: 's', html: 'h' })
+    assert(r.ok, JSON.stringify(r))
+    assert(r.rejected?.length === 1 && /owner@test\.invalid/.test(r.rejected[0]), 'refusal reported: ' + JSON.stringify(r))
+    assert(cap.rcpt.length === 1 && /store@test\.invalid/.test(cap.rcpt[0]), 'store still got it')
+  }, ['owner@test.invalid'])
 })
 
 // ── 2) send-notification: service-role only, escaped values ──
