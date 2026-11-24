@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
+import { Analytics } from '@vercel/analytics/react'
 import { I18nProvider } from '@/lib/i18n'
 import { findMissingConfig, renderConfigError } from '@/lib/configCheck'
 import '@/styles/globals.css'
@@ -36,6 +37,7 @@ async function start() {
         <BrowserRouter>
           <I18nProvider>
             <App />
+            <Analytics />
             <Toaster
               position="top-center"
               toastOptions={{
