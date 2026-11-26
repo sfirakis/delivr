@@ -1,5 +1,7 @@
 {
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/", "destination": "/index.html" },
+    { "source": "/:section(qr|t|s|stores|store|orders|join|terms|auth|merchant|driver|admin)", "destination": "/index.html" },
+    { "source": "/:section(qr|t|s|stores|store|orders|join|terms|auth|merchant|driver|admin)/:rest*", "destination": "/index.html" }
   ]
 }
