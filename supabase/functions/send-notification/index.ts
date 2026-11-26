@@ -1,9 +1,16 @@
 // supabase/functions/send-notification/index.ts
 // Multi-channel notification dispatcher
-// Channels: In-app (Supabase), Push (FCM), SMS (Twilio), Email (Resend)
+// Internal only: callers must send `Authorization: Bearer <service role key>`
+// (confirm-order, assign-driver, order-status-webhook, pg_net trigger in 002).
+// Every request value that reaches an email is HTML-escaped and CR/LF-stripped.
+//
+// Channels: In-app (Supabase), Push (FCM), SMS (Twilio),
+//           Email (SMTP via the product mailbox, Resend only as fallback)
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sendMail, esc, oneLine } from '../_shared/mailer.ts'
+import { isServiceRoleRequest } from '../_shared/guards.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -34,25 +41,10 @@ async function sendSMS(to: string, body: string) {
   return data
 }
 
-// ─── Email via Resend ─────────────────────────────────────────
 async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = Deno.env.get('RESEND_API_KEY')
-  if (!apiKey) return
-
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      from: 'Delivr <orders@delivr.app>',
-      to:   [to],
-      subject,
-      html,
-    }),
-  })
-  return response.json()
+  const r = await sendMail({ to: [to], subject, html })
+  if (!r.ok && r.provider !== 'none') console.error('email error:', r.provider, r.error)
+  return r
 }
 
 // ─── Push via FCM (Firebase Cloud Messaging) ──────────────────
@@ -85,6 +77,14 @@ function orderStatusEmailHTML(params: {
   eta?: string
   trackingUrl: string
 }) {
+  const p = {
+    customerName: esc(oneLine(params.customerName, 80)),
+    storeName:    esc(oneLine(params.storeName, 80)),
+    orderRef:     esc(oneLine(params.orderId, 64).slice(0, 8).toUpperCase()),
+    eta:          params.eta ? esc(oneLine(params.eta, 40)) : '',
+    trackingUrl:  esc(params.trackingUrl),
+    total:        Number.isFinite(params.total) ? params.total : 0,
+  }
   const statusMessages: Record<string, string> = {
     confirmed:  '✓ Η παραγγελία σου επιβεβαιώθηκε!',
     preparing:  '👨‍🍳 Το κατάστημα ετοιμάζει την παραγγελία σου',
@@ -110,27 +110,27 @@ function orderStatusEmailHTML(params: {
         <!-- Status -->
         <div style="background:#fff8f6;border-left:4px solid #ff4500;padding:20px 24px;margin:24px;">
           <p style="font-size:18px;font-weight:700;color:#1a1814;margin:0 0 4px;">
-            ${statusMessages[params.status] ?? 'Ενημέρωση παραγγελίας'}
+            ${Object.hasOwn(statusMessages, params.status) ? statusMessages[params.status] : 'Ενημέρωση παραγγελίας'}
           </p>
           <p style="font-size:13px;color:#6b6760;margin:0;">
-            Παραγγελία #${params.orderId.slice(0,8).toUpperCase()} · ${params.storeName}
+            Παραγγελία #${p.orderRef} · ${p.storeName}
           </p>
         </div>
 
         <!-- Details -->
         <div style="padding:0 24px 24px;">
           <p style="font-size:15px;color:#1a1814;margin:0 0 16px;">
-            Γεια σου, <strong>${params.customerName}</strong>!
+            Γεια σου, <strong>${p.customerName}</strong>!
           </p>
 
-          ${params.eta ? `
+          ${p.eta ? `
           <div style="background:#f8f7f5;border-radius:12px;padding:16px;margin-bottom:16px;text-align:center;">
             <p style="font-size:12px;color:#a8a49e;margin:0 0 4px;text-transform:uppercase;letter-spacing:1px;">Εκτιμώμενη παράδοση</p>
-            <p style="font-size:22px;font-weight:900;color:#ff4500;margin:0;">${params.eta}</p>
+            <p style="font-size:22px;font-weight:900;color:#ff4500;margin:0;">${p.eta}</p>
           </div>` : ''}
 
           <!-- CTA -->
-          <a href="${params.trackingUrl}"
+          <a href="${p.trackingUrl}"
              style="display:block;background:#ff4500;color:#fff;text-align:center;padding:16px;border-radius:50px;
                     text-decoration:none;font-weight:700;font-size:15px;margin-bottom:16px;">
             📍 Παρακολούθηση παραγγελίας
@@ -139,7 +139,7 @@ function orderStatusEmailHTML(params: {
           <!-- Total -->
           <div style="display:flex;justify-content:space-between;border-top:1px solid #f0eee9;padding-top:16px;">
             <span style="color:#6b6760;font-size:13px;">Σύνολο παραγγελίας</span>
-            <span style="font-weight:700;color:#ff4500;font-size:15px;">€${params.total.toFixed(2)}</span>
+            <span style="font-weight:700;color:#ff4500;font-size:15px;">€${p.total.toFixed(2)}</span>
           </div>
         </div>
 
@@ -159,6 +159,14 @@ function orderStatusEmailHTML(params: {
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
+  }
+
+  // Internal endpoint: only our own functions / DB trigger may call it.
+  if (!isServiceRoleRequest(req, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))) {
+    return new Response(
+      JSON.stringify({ error: 'UNAUTHORIZED' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 
   try {
@@ -217,15 +225,15 @@ serve(async (req) => {
           const html = orderStatusEmailHTML({
             customerName: profile?.full_name ?? 'Φίλε',
             storeName:    data.storeName ?? 'Κατάστημα',
-            orderId:      data.orderId,
+            orderId:      String(data.orderId),
             status:       data.status,
             total:        Number(data.total ?? 0),
             eta:          data.eta,
-            trackingUrl:  `${Deno.env.get('APP_URL') ?? 'https://delivr.app'}/track/${data.orderId}`,
+            trackingUrl:  `${Deno.env.get('APP_URL') ?? 'https://delivr.app'}/track/${encodeURIComponent(String(data.orderId))}`,
           })
           results.email = await sendEmail(
             userEmail.user.email,
-            `${title} — Delivr`,
+            `${oneLine(title, 150)} — Delivr`,
             html
           )
         }

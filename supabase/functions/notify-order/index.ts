@@ -2,16 +2,32 @@
 // notify-order — sends a new order to the store
 //
 // Channels:
-//   • Email (Resend) with a one-tap confirmation link that needs no login
-//   • Copy to the platform support address and, optionally, the property owner
+//   • Email (SMTP via the product mailbox, Resend only as fallback) with a
+//     one-tap confirmation link that needs no login
+//   • Hidden copy (Bcc) to the platform support address and, optionally, a
+//     visible copy to the property owner
+//   • Reply-To: the store's email replies to the customer, the customer's copy
+//     replies to the store (support address only as fallback)
 //   • Returns a ready-to-open wa.me link for the WhatsApp hand-off
 //
 // Every attempt is written to order_dispatch_log, so the admin dashboard can
-// show what actually left the building. A missing RESEND_API_KEY is not an
-// error: the order still stands and the store link is returned for manual use.
+// show what actually left the building. A missing mail transport (no SMTP_*
+// and no RESEND_API_KEY) is not an error: the order still stands and the store
+// link is returned for manual use.
+//
+// Idempotent: an email already logged as `sent` for this order is not sent
+// again (anyone holding the tracking link could otherwise replay the call).
+// Parallel calls are safe too: each channel is claimed atomically on the order
+// row (orders.store_email_claimed_at / guest_email_claimed_at, migration 020)
+// before sending, and the claim is cleared again if the send fails.
+// A platform admin (logged-in JWT, delivr_is_admin()) can force the store
+// email again from the admin "resend" button; the guest copy is never resent.
 // ============================================================
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.0'
+import { sendMail, mailProvider, noTransportReason, isSingleEmail } from '../_shared/mailer.ts'
+import { sentEmails, type DispatchRow } from '../_shared/guards.ts'
+import { sendClaimed, supabaseClaims, type ClaimedOutcome } from '../_shared/order-mail.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -186,6 +202,9 @@ Deno.serve(async (req: Request) => {
 
   try {
     const { order_id, public_token, lang: rawLang } = await req.json()
+    if (typeof order_id !== 'string' || typeof public_token !== 'string') {
+      return json({ ok: false, error: 'MISSING_PARAMS' }, 400)
+    }
     const lang: 'el' | 'en' = rawLang === 'en' ? 'en' : 'el'
 
     if (!order_id || !public_token) return json({ ok: false, error: 'MISSING_PARAMS' }, 400)
@@ -220,47 +239,84 @@ Deno.serve(async (req: Request) => {
     const orderView = { ...order, platform_name: settings?.platform_name ?? 'Delivr' }
     const orderItems = (items ?? []) as OrderItem[]
 
+    // ── Idempotency: what already went out for this order ───
+    const { data: prevRows } = await supabase
+      .from('order_dispatch_log').select('channel, target, status')
+      .eq('order_id', order_id).eq('channel', 'email').eq('status', 'sent')
+    const already = sentEmails((prevRows ?? []) as DispatchRow[], order.guest_email)
+
+    // Admin resend: only a logged-in platform admin may resend the store email.
+    let adminResend = false
+    const authHeader = req.headers.get('authorization') ?? ''
+    if (authHeader) {
+      const asCaller = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } },
+      )
+      const { data: isAdmin } = await asCaller.rpc('delivr_is_admin')
+      adminResend = isAdmin === true
+    }
+
     const results: Record<string, unknown> = {}
     const logs: Record<string, unknown>[] = []
+    const claims = supabaseClaims(supabase)
+
+    /** Turn a claimed send into a result value + a dispatch log row. */
+    const record = (key: 'email' | 'guest_email', target: string, o: ClaimedOutcome) => {
+      if (o.outcome === 'already_sent') { results[key] = 'already_sent'; return }
+      if (o.outcome === 'claim_failed') {
+        results[key] = 'failed'
+        logs.push({ order_id, channel: 'email', target, status: 'failed', provider, error: o.error })
+        return
+      }
+      const r = o.result
+      results[key] = o.outcome
+      logs.push({ order_id, channel: 'email', target,
+                  status: o.outcome, provider: r.provider,
+                  error: r.ok ? (r.rejected?.length ? `rejected: ${r.rejected.join(' | ')}` : null)
+                              : r.error ?? null })
+    }
 
     // ── Email ────────────────────────────────────────────────
-    const resendKey = Deno.env.get('RESEND_API_KEY')
-    const from = Deno.env.get('RESEND_FROM') ?? 'Delivr <onboarding@resend.dev>'
+    const provider = mailProvider()
     const storeEmail = store.order_email || store.email
+    const supportEmail: string | undefined = settings?.support_email || undefined
+    const guestAddr = typeof order.guest_email === 'string' ? order.guest_email.trim() : ''
     const wantsEmail = (settings?.notify_store_email ?? true) && store.notify_email !== false
 
-    if (!resendKey) {
+    if (provider === 'none') {
+      // Result value kept as before so existing callers/tests keep working.
       results.email = 'skipped_no_key'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
-                  provider: 'resend', error: 'RESEND_API_KEY not configured' })
+                  provider: 'none', error: noTransportReason() })
+    } else if (already.store && !adminResend) {
+      results.email = 'already_sent'
     } else if (!wantsEmail || !storeEmail) {
       results.email = 'skipped_disabled'
       logs.push({ order_id, channel: 'email', target: storeEmail ?? null, status: 'skipped',
-                  provider: 'resend', error: !storeEmail ? 'store has no email' : 'notifications disabled' })
+                  provider, error: !storeEmail ? 'store has no email' : 'notifications disabled' })
     } else {
       const to = [storeEmail]
-      if (settings?.support_email) to.push(settings.support_email)
       if (settings?.notify_property_email && property?.contact_email) to.push(property.contact_email)
+      // The platform copy is hidden, so the store does not see our mailbox.
+      const bcc = supportEmail ? [supportEmail] : []
+      // "Reply" from the store goes to the customer when we have their email.
+      const storeReplyTo = isSingleEmail(guestAddr) ? guestAddr : supportEmail
 
       const html = buildEmailHtml(orderView, orderItems, confirmUrl, lang)
       const subject = T[lang].subject(order.order_number,
         order.delivery_type === 'delivery' ? T[lang].delivery : T[lang].takeaway)
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from, to, subject, html, reply_to: settings?.support_email ?? undefined }),
-      })
-
-      const body = await res.text()
-      results.email = res.ok ? 'sent' : `failed_${res.status}`
-      logs.push({ order_id, channel: 'email', target: to.join(', '),
-                  status: res.ok ? 'sent' : 'failed', provider: 'resend',
-                  error: res.ok ? null : body.slice(0, 500) })
+      // Admin resend forces the claim; everyone else must win it.
+      record('email', to.join(', '), await sendClaimed(claims, order_id, 'store_email_claimed_at',
+        { to, bcc, subject, html, replyTo: storeReplyTo }, sendMail, adminResend))
     }
 
     // ── Guest confirmation copy ──────────────────────────────
-    if (resendKey && order.guest_email) {
+    if (provider !== 'none' && order.guest_email && already.guest) {
+      results.guest_email = 'already_sent'
+    } else if (provider !== 'none' && order.guest_email) {
       const guestHtml = `<!doctype html><html><body style="font-family:Verdana,Arial,sans-serif;padding:20px;">
         <h2 style="color:#1a1814;">${lang === 'el' ? 'Η παραγγελία σου καταχωρήθηκε' : 'Your order was placed'}</h2>
         <p>${lang === 'el' ? 'Αριθμός' : 'Number'}: <strong>${esc(order.order_number)}</strong> — ${esc(store.name)}</p>
@@ -270,18 +326,14 @@ Deno.serve(async (req: Request) => {
            ${lang === 'el' ? 'Παρακολούθηση παραγγελίας' : 'Track your order'}</a></p>
       </body></html>`
 
-      const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${resendKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          from, to: [order.guest_email],
-          subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
-          html: guestHtml,
-        }),
-      })
-      results.guest_email = res.ok ? 'sent' : 'failed'
-      logs.push({ order_id, channel: 'email', target: order.guest_email,
-                  status: res.ok ? 'sent' : 'failed', provider: 'resend' })
+      // The guest copy is never forced: at most one per order.
+      record('guest_email', order.guest_email, await sendClaimed(claims, order_id, 'guest_email_claimed_at', {
+        to: [order.guest_email],
+        subject: lang === 'el' ? `Η παραγγελία σου ${order.order_number}` : `Your order ${order.order_number}`,
+        html: guestHtml,
+        // "Reply" from the customer goes to the store.
+        replyTo: isSingleEmail(String(storeEmail ?? '').trim()) ? String(storeEmail).trim() : supportEmail,
+      }, sendMail))
     }
 
     // ── WhatsApp hand-off link ───────────────────────────────
